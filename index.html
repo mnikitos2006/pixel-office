@@ -195,17 +195,17 @@
 
     .side {
       display: grid;
-      grid-template-rows: auto 1fr auto;
+      grid-template-rows: auto minmax(0, 1fr) auto;
       min-height: 0;
       border: 2px solid var(--line);
       background: var(--bg-panel);
     }
 
-    .side-tabs { display: grid; grid-template-columns: 1fr 1fr; border-bottom: 2px solid var(--line); }
+    .side-tabs { display: grid; grid-template-columns: 1fr 1fr 1fr; border-bottom: 2px solid var(--line); }
     .side-tabs button {
       appearance: none; border: 0; background: transparent;
       color: var(--muted); font: inherit; font-size: 11px;
-      padding: 10px; cursor: pointer;
+      padding: 10px 6px; cursor: pointer;
     }
     .side-tabs button.active {
       color: var(--text); background: var(--bg-panel-2);
@@ -214,14 +214,40 @@
 
     .panel { display: none; min-height: 0; overflow: auto; }
     .panel.active { display: block; }
+    .panel-chat-wrap {
+      display: none;
+      grid-template-rows: auto 1fr;
+      min-height: 0;
+      overflow: hidden;
+    }
+    .panel-chat-wrap.active { display: grid; }
 
-    .chat { padding: 8px; display: flex; flex-direction: column; gap: 8px; }
+    .channel-bar {
+      display: flex; flex-wrap: wrap; gap: 4px;
+      padding: 8px; border-bottom: 1px solid var(--line);
+      background: var(--bg-panel-2);
+    }
+    .channel-chip {
+      appearance: none; border: 1px solid var(--line);
+      background: transparent; color: var(--muted);
+      font: inherit; font-size: 10px; padding: 5px 8px; cursor: pointer;
+    }
+    .channel-chip.active {
+      border-color: var(--accent-dim);
+      color: var(--text);
+      background: rgba(61, 214, 140, 0.1);
+    }
+    .channel-chip.ceo { border-color: #5b8cff55; }
+    .channel-chip.ceo.active { border-color: #5b8cff; color: #9bbbff; }
+
+    .chat { padding: 8px; display: flex; flex-direction: column; gap: 8px; overflow: auto; min-height: 0; }
     .msg {
       border: 1px solid var(--line);
       background: rgba(255,255,255,0.02);
       padding: 8px;
       animation: fadeIn 0.35s ease;
     }
+    .msg.hidden-ch { display: none; }
     @keyframes fadeIn {
       from { opacity: 0; transform: translateY(4px); }
       to { opacity: 1; transform: none; }
@@ -230,6 +256,26 @@
     .msg .who { font-weight: 600; }
     .msg .when { color: var(--muted); }
     .msg .body { font-size: 12px; line-height: 1.45; color: #d5deee; }
+    .msg .files { display: flex; flex-direction: column; gap: 6px; margin-top: 8px; }
+    .msg .file-chip {
+      display: flex; align-items: center; justify-content: space-between; gap: 8px;
+      padding: 8px 10px;
+      border: 1px solid var(--accent-dim);
+      background: rgba(61, 214, 140, 0.08);
+      text-decoration: none;
+      color: var(--text);
+      font-size: 11px;
+    }
+    .msg .file-chip:hover { filter: brightness(1.08); }
+    .msg .file-chip .fname { font-weight: 600; color: var(--accent); }
+    .msg .file-chip .fmeta { color: var(--muted); font-size: 10px; }
+    .msg .file-note { font-size: 10px; color: var(--muted); margin-top: 4px; }
+
+    .hierarchy {
+      padding: 8px 10px; font-size: 10px; color: var(--muted);
+      border-bottom: 1px solid var(--line); line-height: 1.45;
+    }
+    .hierarchy strong { color: #9bbbff; }
 
     .agent-list { padding: 8px; display: flex; flex-direction: column; gap: 6px; }
     .agent-row {
@@ -246,10 +292,22 @@
     .agent-row .name { font-size: 12px; font-weight: 600; }
     .agent-row .role { font-size: 10px; color: var(--muted); margin-top: 2px; }
     .agent-row .state { font-size: 10px; color: var(--accent); text-transform: uppercase; }
+    .agent-row .dm-btn {
+      grid-column: 1 / -1;
+      margin-top: 4px;
+      appearance: none; border: 1px solid var(--line);
+      background: transparent; color: var(--muted);
+      font: inherit; font-size: 10px; padding: 5px; cursor: pointer;
+    }
+    .agent-row .dm-btn:hover { color: var(--text); border-color: var(--accent-dim); }
 
     .composer {
       display: grid; grid-template-columns: 1fr auto; gap: 6px;
       padding: 8px; border-top: 2px solid var(--line); background: var(--bg-panel-2);
+    }
+    .composer-meta {
+      grid-column: 1 / -1;
+      font-size: 10px; color: var(--muted); margin-bottom: 2px;
     }
     .composer input {
       background: #0c1220; border: 1px solid var(--line); color: var(--text);
@@ -275,6 +333,50 @@
     .toolbar .left, .toolbar .right { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
     .credit { font-size: 10px; color: var(--muted); }
 
+    .modal-backdrop {
+      position: fixed; inset: 0; z-index: 50;
+      background: rgba(0,0,0,0.55);
+      display: none; align-items: center; justify-content: center;
+      padding: 16px;
+    }
+    .modal-backdrop.open { display: flex; }
+    .modal {
+      width: min(480px, 100%);
+      background: #121a2b;
+      border: 2px solid var(--line);
+      padding: 16px;
+      max-height: 90vh;
+      overflow: auto;
+    }
+    .modal h2 {
+      font-family: "Press Start 2P", monospace;
+      font-size: 11px;
+      margin-bottom: 12px;
+    }
+    .modal label {
+      display: block; font-size: 11px; color: var(--muted); margin: 10px 0 4px;
+    }
+    .modal input, .modal select {
+      width: 100%; background: #0c1220; border: 1px solid var(--line);
+      color: var(--text); padding: 9px; font: inherit; font-size: 12px;
+    }
+    .modal .row { display: flex; gap: 8px; margin-top: 14px; flex-wrap: wrap; }
+    .modal .row button {
+      appearance: none; border: 1px solid var(--accent-dim);
+      background: linear-gradient(180deg, #2a9b66, #1f8f5a);
+      color: #04140c; font: inherit; font-size: 11px; font-weight: 600;
+      padding: 10px 12px; cursor: pointer;
+    }
+    .modal .row button.ghost {
+      background: transparent; border-color: var(--line); color: var(--muted);
+    }
+    .modal .hint {
+      font-size: 10px; color: var(--muted); margin-top: 10px; line-height: 1.45;
+    }
+    .modal .hint a { color: var(--accent); }
+    .pill.ai-on { color: #3dd68c; }
+    .pill.ai-off { color: #ef6b6b; }
+
     @media (max-width: 900px) {
       .main { grid-template-columns: 1fr; grid-template-rows: minmax(280px, 1fr) minmax(220px, 40vh); }
       .brand p { display: none; }
@@ -288,11 +390,12 @@
         <div class="brand-mark" aria-hidden="true"></div>
         <div>
           <h1>PIXEL OFFICE</h1>
-          <p>Офис в стиле pixel-agents — демо для Никиты</p>
+          <p>Иерархия через CEO · зоны · личные чаты</p>
         </div>
       </div>
       <div class="status-pills">
         <div class="pill"><span class="dot"></span> Live</div>
+        <div class="pill ai-off" id="aiStatus">AI off</div>
         <div class="pill" id="onlineCount">0 online</div>
         <div class="pill" id="clock">--:--</div>
       </div>
@@ -303,7 +406,7 @@
         <div class="loading" id="loading">Loading office…</div>
         <canvas id="office" width="336" height="352"></canvas>
         <div class="pix-overlay" id="pixOverlay" aria-hidden="true"></div>
-        <div class="hint">Кликни агента · пробел — пауза</div>
+        <div class="hint">Клик по агенту → личный чат · пробел — пауза</div>
         <aside class="detail" id="detail">
           <h3 id="detailName">Agent</h3>
           <p id="detailRole"></p>
@@ -314,17 +417,28 @@
 
       <aside class="side">
         <div class="side-tabs">
-          <button class="active" data-tab="chat">Chat</button>
-          <button data-tab="agents">Agents</button>
+          <button class="active" data-tab="chat">Чаты</button>
+          <button data-tab="agents">Команда</button>
+          <button data-tab="tasks">Задачи</button>
         </div>
-        <div class="panel active" id="panel-chat">
+        <div class="panel-chat-wrap active" id="panel-chat">
+          <div>
+            <div class="hierarchy">Вы → <strong>Ada (CEO)</strong> → агенты по зонам. Личка — напрямую.</div>
+            <div class="channel-bar" id="channelBar"></div>
+          </div>
           <div class="chat" id="chat"></div>
         </div>
         <div class="panel" id="panel-agents">
           <div class="agent-list" id="agentList"></div>
         </div>
+        <div class="panel" id="panel-tasks">
+          <div class="chat" id="taskBoard">
+            <div class="msg"><div class="body" style="color:#8b9bb8">Пока нет активных задач. Напиши в канал «Задача → CEO».</div></div>
+          </div>
+        </div>
         <form class="composer" id="composer">
-          <input id="brief" type="text" maxlength="160" placeholder="Дай задачу офису…" autocomplete="off" />
+          <div class="composer-meta" id="composerMeta">Канал: Задача → CEO</div>
+          <input id="brief" type="text" maxlength="200" placeholder="Задача для Ada (CEO)…" autocomplete="off" />
           <button type="submit">Send</button>
         </form>
       </aside>
@@ -335,24 +449,137 @@
         <button type="button" id="btnPause">Pause</button>
         <button type="button" class="ghost" id="btnBurst">Work burst</button>
         <button type="button" class="ghost" id="btnMeeting">Standup</button>
+        <button type="button" class="ghost" id="btnSettings">AI Settings</button>
       </div>
       <div class="right">
         <span class="pill" id="taskStat" style="border:0;background:transparent;padding:0">0 в работе</span>
-        <a class="credit" href="https://github.com/pixel-agents-hq/pixel-agents" target="_blank" rel="noopener">assets: pixel-agents (MIT)</a>
+        <a class="credit" href="https://github.com/mnikitos2006/pixel-office" target="_blank" rel="noopener">github</a>
       </div>
     </footer>
   </div>
 
-  <script src="office.js?v=3"></script>
+  <div class="modal-backdrop" id="settingsModal" role="dialog" aria-modal="true">
+    <div class="modal">
+      <h2>AI Settings</h2>
+      <p class="hint" style="margin-top:0">
+        Каждый агент = отдельная роль (system prompt). Нужен API-ключ провайдера.
+        Ключ хранится только в браузере (localStorage), в git не попадает.
+      </p>
+      <label><input type="checkbox" id="cfgEnabled" /> Включить живой LLM</label>
+      <label>Провайдер</label>
+      <select id="cfgProvider">
+        <option value="openrouter">OpenRouter (рекомендую)</option>
+        <option value="openai">OpenAI</option>
+        <option value="anthropic">Anthropic</option>
+      </select>
+      <label>API key</label>
+      <input id="cfgKey" type="password" placeholder="sk-… или ключ OpenRouter" autocomplete="off" />
+      <label>Модель</label>
+      <input id="cfgModel" type="text" placeholder="openai/gpt-4o-mini" />
+      <label>Base URL (опционально)</label>
+      <input id="cfgBase" type="text" placeholder="оставьте пустым" />
+      <div class="hint">
+        OpenRouter: <a href="https://openrouter.ai/keys" target="_blank" rel="noopener">openrouter.ai/keys</a><br>
+        OpenAI: <a href="https://platform.openai.com/api-keys" target="_blank" rel="noopener">platform.openai.com</a><br>
+        Anthropic: <a href="https://console.anthropic.com/" target="_blank" rel="noopener">console.anthropic.com</a><br>
+        Пример модели OpenRouter: <code>openai/gpt-4o-mini</code> · OpenAI: <code>gpt-4o-mini</code> · Anthropic: <code>claude-sonnet-4-5</code>
+      </div>
+      <div class="row">
+        <button type="button" id="cfgSave">Сохранить</button>
+        <button type="button" class="ghost" id="cfgTest">Тест Ada</button>
+        <button type="button" class="ghost" id="cfgClose">Закрыть</button>
+      </div>
+      <p class="hint" id="cfgStatus"></p>
+    </div>
+  </div>
+
+  <script src="roles.js?v=1"></script>
+  <script src="llm.js?v=1"></script>
+  <script src="deliverables.js?v=1"></script>
+  <script src="hq.js?v=3"></script>
+  <script src="office.js?v=5"></script>
   <script>
     const chatEl = document.getElementById("chat");
     const agentListEl = document.getElementById("agentList");
+    const channelBar = document.getElementById("channelBar");
     const detail = document.getElementById("detail");
-    let selectedId = null;
-    let office;
-    let simMin = 9 * 60;
+    const briefInput = document.getElementById("brief");
+    const composerMeta = document.getElementById("composerMeta");
+    const taskBoard = document.getElementById("taskBoard");
 
-    function addMsg(who, body, kind = "chat") {
+    let selectedId = null;
+    let activeChannel = "ceo"; // ceo | office | dm:id
+    let office;
+    let hq;
+    let simMin = 9 * 60;
+    const messages = []; // {channel, who, body, kind}
+
+    function channelLabel(ch) {
+      if (ch === "ceo") return "Задача → CEO";
+      if (ch === "office") return "Офис (иерархия)";
+      if (ch.startsWith("dm:")) {
+        const id = ch.slice(3);
+        const a = office?.getAgent(id);
+        return a ? `Личка · ${a.name}` : ch;
+      }
+      return ch;
+    }
+
+    function setChannel(ch) {
+      activeChannel = ch;
+      renderChannelBar();
+      filterChat();
+      composerMeta.textContent = "Канал: " + channelLabel(ch);
+      if (ch === "ceo") briefInput.placeholder = "Задача для Ada (CEO)…";
+      else if (ch === "office") briefInput.placeholder = "Сообщение в офис (уйдёт через CEO)…";
+      else briefInput.placeholder = "Личное сообщение…";
+      briefInput.focus();
+    }
+
+    function renderChannelBar() {
+      const agents = office ? office.getAgents() : [];
+      const chips = [
+        { id: "ceo", label: "→ CEO", cls: "ceo" },
+        { id: "office", label: "Офис", cls: "" },
+        ...agents.map((a) => ({
+          id: `dm:${a.id}`,
+          label: a.id === "ada" ? "DM Ada" : a.name,
+          cls: "",
+        })),
+      ];
+      channelBar.innerHTML = chips.map((c) =>
+        `<button type="button" class="channel-chip ${c.cls} ${activeChannel === c.id ? "active" : ""}" data-ch="${c.id}">${c.label}</button>`
+      ).join("");
+    }
+
+    function filterChat() {
+      chatEl.querySelectorAll(".msg").forEach((el) => {
+        el.classList.toggle("hidden-ch", el.dataset.channel !== activeChannel);
+      });
+    }
+
+    function formatSize(n) {
+      if (!n && n !== 0) return "";
+      if (n < 1024) return n + " B";
+      return (n / 1024).toFixed(1) + " KB";
+    }
+
+    function renderAttachments(attachments) {
+      if (!attachments || !attachments.length) return "";
+      const chips = attachments.map((f) => `
+        <a class="file-chip" href="${f.url}" download="${f.name}" target="_blank" rel="noopener">
+          <span>
+            <div class="fname">📎 ${f.label || f.name}</div>
+            <div class="fmeta">${f.name}${f.size ? " · " + formatSize(f.size) : ""}</div>
+            ${f.note ? `<div class="file-note">${f.note}</div>` : ""}
+          </span>
+          <span>Скачать</span>
+        </a>`).join("");
+      return `<div class="files">${chips}</div>`;
+    }
+
+    function addMsg({ channel = "office", who, body, kind = "chat", attachments = null }) {
+      messages.push({ channel, who, body, kind, attachments });
       const agents = office ? office.getAgents() : [];
       const ag = agents.find((a) => a.name === who);
       const colors = {
@@ -360,50 +587,158 @@
         Turing: "#c084fc", Hopper: "#ef6b6b", Noether: "#38bdf8", You: "#e8eef8",
       };
       const el = document.createElement("div");
-      el.className = "msg";
+      el.className = "msg" + (channel !== activeChannel ? " hidden-ch" : "");
+      el.dataset.channel = channel;
+      const tag = kind === "output" ? "● " : kind === "system" ? "◈ " : "";
       el.innerHTML = `
         <div class="meta">
-          <span class="who" style="color:${ag?.color || colors[who] || "#8b9bb8"}">${kind === "output" ? "● output " : ""}${who}</span>
-          <span class="when">now</span>
+          <span class="who" style="color:${ag?.color || colors[who] || "#8b9bb8"}">${tag}${who}</span>
+          <span class="when">${channelLabel(channel)}</span>
         </div>
-        <div class="body">${body}</div>`;
+        <div class="body">${body}</div>
+        ${renderAttachments(attachments)}`;
       chatEl.prepend(el);
-      while (chatEl.children.length > 40) chatEl.lastChild.remove();
+      while (chatEl.children.length > 80) chatEl.lastChild.remove();
+
+      // task board mirror for CEO tasks
+      if (channel === "ceo" || (channel === "office" && who === "Ada" && /задач|Итог|Назначаю|Делегир|файл/i.test(body))) {
+        const t = document.createElement("div");
+        t.className = "msg";
+        t.innerHTML = `<div class="meta"><span class="who" style="color:${ag?.color || colors[who] || "#8b9bb8"}">${who}</span></div><div class="body">${body}</div>${renderAttachments(attachments)}`;
+        if (taskBoard.querySelector(".body")?.textContent?.includes("Пока нет")) taskBoard.innerHTML = "";
+        taskBoard.prepend(t);
+        while (taskBoard.children.length > 30) taskBoard.lastChild.remove();
+      }
     }
 
     function renderAgents(list) {
       agentListEl.innerHTML = list.map((a) => `
-        <button class="agent-row ${selectedId === a.id ? "selected" : ""}" data-id="${a.id}">
+        <div class="agent-row ${selectedId === a.id ? "selected" : ""}" data-id="${a.id}">
           <span class="agent-swatch" style="background:${a.color}"></span>
           <span>
-            <div class="name">${a.name}</div>
-            <div class="role">${a.role}</div>
+            <div class="name">${a.name}${a.id === "ada" ? " · CEO" : ""}</div>
+            <div class="role">${a.title || a.role} · ${a.areaLabel || a.area || ""}</div>
           </span>
           <span class="state">${a.state}</span>
-        </button>`).join("");
+          <button type="button" class="dm-btn" data-dm="${a.id}">Открыть личный чат</button>
+        </div>`).join("");
+    }
+
+    function showTab(tab) {
+      document.querySelectorAll(".side-tabs button").forEach((b) => b.classList.toggle("active", b.dataset.tab === tab));
+      document.getElementById("panel-chat").classList.toggle("active", tab === "chat");
+      document.getElementById("panel-agents").classList.toggle("active", tab === "agents");
+      document.getElementById("panel-tasks").classList.toggle("active", tab === "tasks");
     }
 
     document.querySelectorAll(".side-tabs button").forEach((btn) => {
-      btn.addEventListener("click", () => {
-        document.querySelectorAll(".side-tabs button").forEach((b) => b.classList.remove("active"));
-        document.querySelectorAll(".panel").forEach((p) => p.classList.remove("active"));
-        btn.classList.add("active");
-        document.getElementById(`panel-${btn.dataset.tab}`).classList.add("active");
-      });
+      btn.addEventListener("click", () => showTab(btn.dataset.tab));
+    });
+
+    channelBar.addEventListener("click", (e) => {
+      const chip = e.target.closest("[data-ch]");
+      if (chip) setChannel(chip.dataset.ch);
     });
 
     agentListEl.addEventListener("click", (e) => {
+      const dm = e.target.closest("[data-dm]");
+      if (dm) {
+        setChannel(`dm:${dm.dataset.dm}`);
+        showTab("chat");
+        office?.selectAgent(dm.dataset.dm);
+        return;
+      }
       const row = e.target.closest("[data-id]");
       if (row && office) office.selectAgent(row.dataset.id);
     });
 
     document.getElementById("composer").addEventListener("submit", (e) => {
       e.preventDefault();
-      const input = document.getElementById("brief");
-      const text = input.value.trim();
-      if (!text || !office) return;
-      office.assignBrief(text);
-      input.value = "";
+      const text = briefInput.value.trim();
+      if (!text || !hq) return;
+      if (activeChannel === "ceo") {
+        hq.submitCompanyTask(text);
+      } else if (activeChannel === "office") {
+        // Everything still goes through CEO
+        addMsg({ channel: "office", who: "You", body: text, kind: "chat" });
+        setTimeout(() => {
+          addMsg({
+            channel: "office",
+            who: "Ada",
+            body: "Приняла в общий канал. Оформляю как задачу компании.",
+            kind: "chat",
+          });
+          hq.submitCompanyTask(text);
+        }, 500);
+        setChannel("ceo");
+      } else if (activeChannel.startsWith("dm:")) {
+        hq.sendDM(activeChannel.slice(3), text);
+      }
+      briefInput.value = "";
+    });
+
+    function refreshAiStatus() {
+      const el = document.getElementById("aiStatus");
+      const on = window.OfficeLLM?.isReady();
+      el.textContent = on ? "AI on" : "AI off";
+      el.classList.toggle("ai-on", !!on);
+      el.classList.toggle("ai-off", !on);
+    }
+
+    function openSettings() {
+      const cfg = OfficeLLM.loadConfig();
+      document.getElementById("cfgEnabled").checked = !!cfg.enabled;
+      document.getElementById("cfgProvider").value = cfg.provider || "openrouter";
+      document.getElementById("cfgKey").value = cfg.apiKey || "";
+      document.getElementById("cfgModel").value = cfg.model || "";
+      document.getElementById("cfgBase").value = cfg.baseUrl || "";
+      document.getElementById("cfgStatus").textContent = "";
+      document.getElementById("settingsModal").classList.add("open");
+    }
+
+    document.getElementById("btnSettings").addEventListener("click", openSettings);
+    document.getElementById("cfgClose").addEventListener("click", () => {
+      document.getElementById("settingsModal").classList.remove("open");
+    });
+    document.getElementById("settingsModal").addEventListener("click", (e) => {
+      if (e.target.id === "settingsModal") e.currentTarget.classList.remove("open");
+    });
+    document.getElementById("cfgProvider").addEventListener("change", () => {
+      const p = document.getElementById("cfgProvider").value;
+      const model = document.getElementById("cfgModel");
+      if (p === "openrouter" && !model.value.includes("/")) model.value = "openai/gpt-4o-mini";
+      if (p === "openai") model.value = "gpt-4o-mini";
+      if (p === "anthropic") model.value = "claude-sonnet-4-5";
+    });
+    document.getElementById("cfgSave").addEventListener("click", () => {
+      OfficeLLM.saveConfig({
+        enabled: document.getElementById("cfgEnabled").checked,
+        provider: document.getElementById("cfgProvider").value,
+        apiKey: document.getElementById("cfgKey").value.trim(),
+        model: document.getElementById("cfgModel").value.trim(),
+        baseUrl: document.getElementById("cfgBase").value.trim(),
+      });
+      refreshAiStatus();
+      document.getElementById("cfgStatus").textContent = OfficeLLM.isReady()
+        ? "Сохранено. Живой ИИ включён для всех агентов."
+        : "Сохранено. Чтобы включить ИИ — поставь галочку и API key.";
+    });
+    document.getElementById("cfgTest").addEventListener("click", async () => {
+      const status = document.getElementById("cfgStatus");
+      // save first
+      document.getElementById("cfgSave").click();
+      if (!OfficeLLM.isReady()) {
+        status.textContent = "Сначала включи LLM и вставь ключ.";
+        return;
+      }
+      status.textContent = "Тестирую Ada…";
+      try {
+        const res = await OfficeLLM.askAgent("ada", 'Скажи одним коротким предложением JSON: {"reply_to_user":"...", "office_announce":"", "assignments":[], "need_file":false, "file_kind":null}');
+        const text = res.json?.reply_to_user || res.text?.slice(0, 120) || "ok";
+        status.textContent = "OK: " + text;
+      } catch (err) {
+        status.textContent = "Ошибка: " + err.message;
+      }
     });
 
     document.getElementById("btnPause").addEventListener("click", () => {
@@ -423,7 +758,10 @@
 
     (async () => {
       office = new PixelOffice(document.getElementById("office"));
-      office.on("chat", ({ who, body, kind }) => addMsg(who, body, kind));
+      hq = new OfficeHQ(office);
+      office.attachHQ(hq);
+
+      office.on("chat", (msg) => addMsg(msg));
       office.on("select", (a) => {
         selectedId = a?.id || null;
         if (!a) {
@@ -432,11 +770,14 @@
           return;
         }
         detail.classList.add("open");
-        document.getElementById("detailName").textContent = a.name;
-        document.getElementById("detailRole").textContent = a.role;
+        document.getElementById("detailName").textContent = a.name + (a.id === "ada" ? " · CEO" : "");
+        document.getElementById("detailRole").textContent = `${a.title || a.role} · ${a.areaLabel || ""}`;
         document.getElementById("detailTask").textContent = `Задача: ${a.task}`;
         document.getElementById("detailThought").textContent = `Мысль: ${a.thought}`;
         renderAgents(office.getAgents());
+        // Clicking agent opens DM
+        setChannel(`dm:${a.id}`);
+        showTab("chat");
       });
       office.on("tick", ({ busy, agents }) => {
         simMin += 0.04;
@@ -456,6 +797,17 @@
         await office.init();
         document.getElementById("loading").classList.add("hidden");
         renderAgents(office.getAgents());
+        renderChannelBar();
+        setChannel("ceo");
+        refreshAiStatus();
+        if (!OfficeLLM.isReady()) {
+          addMsg({
+            channel: "ceo",
+            who: "Ada",
+            body: "Сейчас я в demo-режиме. Чтобы включить настоящий ИИ для всех агентов: кнопка AI Settings → ключ OpenRouter/OpenAI/Anthropic → «Включить живой LLM».",
+            kind: "system",
+          });
+        }
       } catch (err) {
         document.getElementById("loading").textContent = "Ошибка загрузки: " + err.message;
         console.error(err);

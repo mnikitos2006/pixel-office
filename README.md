@@ -21,6 +21,15 @@ python3 -m http.server 8765
 - Текущая: http://127.0.0.1:8765/
 - Legacy: http://127.0.0.1:8765/legacy-v1-procedural.html
 
+## Живой ИИ (роли агентов)
+
+1. Открой **AI Settings** внизу.
+2. Вставь API-ключ (удобнее всего [OpenRouter](https://openrouter.ai/keys)).
+3. Включи «Живой LLM» → Сохранить → Тест Ada.
+
+Каждый агент работает под своим system prompt (CEO / Frontend / Backend / QA / Research / Design).
+Ключ хранится только в `localStorage` браузера.
+
 ## Ассеты
 
 Спрайты и layout адаптированы из [pixel-agents-hq/pixel-agents](https://github.com/pixel-agents-hq/pixel-agents) (MIT).  

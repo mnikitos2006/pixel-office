@@ -12,14 +12,16 @@
   const VOID = 255;
   const WALL = 0;
 
-  const AGENTS_META = [
-    { id: "ada", name: "Ada", role: "Director", color: "#5b8cff" },
-    { id: "grace", name: "Grace", role: "Frontend", color: "#3dd68c" },
-    { id: "linus", name: "Linus", role: "Backend", color: "#f0b429" },
-    { id: "turing", name: "Turing", role: "Research", color: "#c084fc" },
-    { id: "hopper", name: "Hopper", role: "QA", color: "#ef6b6b" },
-    { id: "noether", name: "Noether", role: "Design", color: "#38bdf8" },
-  ];
+  // Full meta comes from hq.js (OFFICE_AGENTS_META). Fallback if hq not loaded yet.
+  const AGENTS_META = () =>
+    window.OFFICE_AGENTS_META || [
+      { id: "ada", name: "Ada", role: "CEO", color: "#5b8cff", area: "executive", areaLabel: "Кабинет CEO", title: "CEO" },
+      { id: "grace", name: "Grace", role: "Frontend", color: "#3dd68c", area: "engineering", areaLabel: "Инжиниринг", title: "Frontend" },
+      { id: "linus", name: "Linus", role: "Backend", color: "#f0b429", area: "engineering", areaLabel: "Инжиниринг", title: "Backend" },
+      { id: "hopper", name: "Hopper", role: "QA", color: "#ef6b6b", area: "engineering", areaLabel: "Инжиниринг", title: "QA" },
+      { id: "turing", name: "Turing", role: "Research", color: "#c084fc", area: "creative", areaLabel: "Креатив", title: "Research" },
+      { id: "noether", name: "Noether", role: "Design", color: "#38bdf8", area: "creative", areaLabel: "Креатив", title: "Design" },
+    ];
 
   const TASKS = [
     "пишет API-контракт",
@@ -33,12 +35,12 @@
   const LINES = [
     ["Ada", "Grace", "Сетка готова — берёшь inbox?"],
     ["Grace", "Ada", "Беру. Макет через пару тиков."],
-    ["Linus", "Hopper", "Staging зелёный."],
-    ["Hopper", "Linus", "Ловлю флаки на race."],
+    ["Linus", "Ada", "Staging зелёный — можно катить?"],
+    ["Hopper", "Ada", "Ловлю флаки на race."],
     ["Turing", "Ada", "Memory recall стабилен."],
-    ["Ada", "Team", "Standup через 5 — blockers в канал."],
-    ["Noether", "Grace", "Нужна иконка spectator."],
-    ["Grace", "Noether", "Кину в PR вместе с layout."],
+    ["Ada", "Team", "Standup через 5 — blockers через меня."],
+    ["Noether", "Ada", "Нужна иконка spectator — окнуть дизайн?"],
+    ["Grace", "Ada", "Кину layout в PR после ревью."],
   ];
 
   // ── Colorize (Photoshop-style, from pixel-agents) ─────────────
@@ -109,6 +111,12 @@
       this.chatAcc = 0;
       this.pcFrame = 0;
       this.pcTimer = 0;
+      this.hq = null;
+      this.idleChat = true;
+    }
+
+    attachHQ(hq) {
+      this.hq = hq;
     }
 
     on(evt, fn) {
@@ -170,7 +178,18 @@
       window.addEventListener("resize", () => this.resize());
       this.canvas.addEventListener("click", (e) => this.onClick(e));
 
-      this.emit("chat", { who: "Ada", body: "Офис онлайн — layout из pixel-agents.", kind: "system" });
+      this.emitChat({
+        channel: "office",
+        who: "Ada",
+        body: "Офис онлайн. Я CEO — все задачи компании идут через меня. Личные чаты: клик по агенту.",
+        kind: "system",
+      });
+      this.emitChat({
+        channel: "ceo",
+        who: "Ada",
+        body: "Привет! Кидай сюда задачу для офиса — я распределю по зонам.",
+        kind: "system",
+      });
       this.last = performance.now();
       requestAnimationFrame((t) => this.loop(t));
     }
@@ -252,9 +271,9 @@
     }
 
     spawnAgents() {
-      // Prefer seat furniture; face toward nearby desks/tables
       const seats = this.furniture.filter((f) => f.isSeat);
       const deskLike = this.furniture.filter((f) => /DESK|TABLE|COFFEE_TABLE/.test(f.type));
+      const used = new Set();
 
       const pickFacing = (seat) => {
         let best = null;
@@ -275,11 +294,28 @@
         return best.dr > 0 ? DIRS.DOWN : DIRS.UP;
       };
 
-      this.agents = AGENTS_META.map((meta, i) => {
-        const seat = seats[i % seats.length];
+      const seatForArea = (area) => {
+        const anchor = (window.OfficeHQ && OfficeHQ.areaAnchor(area)) || { col: 5, row: 16 };
+        const free = seats.filter((s) => !used.has(s.uid));
+        const pool = free.length ? free : seats;
+        pool.sort((a, b) => {
+          const da = Math.hypot(a.col - anchor.col, a.row - anchor.row);
+          const db = Math.hypot(b.col - anchor.col, b.row - anchor.row);
+          return da - db;
+        });
+        const seat = pool[0] || seats[0];
+        if (seat) used.add(seat.uid);
+        return seat;
+      };
+
+      this.agents = AGENTS_META().map((meta, i) => {
+        const seat = seatForArea(meta.area || "engineering");
         const dir = pickFacing(seat);
         return {
           ...meta,
+          role: meta.role || meta.title || "Agent",
+          title: meta.title || meta.role,
+          areaLabel: meta.areaLabel || meta.area || "",
           palette: i % 6,
           col: seat.col,
           row: seat.row,
@@ -288,11 +324,11 @@
           homeCol: seat.col,
           homeRow: seat.row,
           dir,
-          state: "type", // type | walk | read | idle
+          state: meta.id === "ada" ? "idle" : "type",
           frame: 0,
           frameT: 0,
-          task: TASKS[i % TASKS.length],
-          thought: "в работе…",
+          task: meta.id === "ada" ? "Жду задачу от владельца" : TASKS[i % TASKS.length],
+          thought: meta.id === "ada" ? "управляю офисом" : "в своей зоне…",
           bubble: null,
           bubbleT: 0,
           actionT: 2 + Math.random() * 3,
@@ -403,35 +439,53 @@
       this.emit("select", a);
     }
 
+    getAgent(id) {
+      return this.agents.find((a) => a.id === id) || null;
+    }
+
     getAgents() {
       return this.agents.map((a) => ({
         id: a.id,
         name: a.name,
         role: a.role,
+        title: a.title || a.role,
+        area: a.area,
+        areaLabel: a.areaLabel,
         color: a.color,
         state: a.state,
         task: a.task,
         thought: a.thought,
+        reportsTo: a.reportsTo ?? (a.id === "ada" ? null : "ada"),
       }));
     }
 
+    emitChat(payload) {
+      this.emit("chat", payload);
+    }
+
+    setAgentBubble(id, text, t = 2) {
+      const a = this.getAgent(id);
+      if (!a) return;
+      a.bubble = text;
+      a.bubbleT = t;
+    }
+
+    setAgentWork(id, { task, thought, state, bubble } = {}) {
+      const a = this.getAgent(id);
+      if (!a) return;
+      if (task != null) a.task = task;
+      if (thought != null) a.thought = thought;
+      if (state != null) a.state = state;
+      if (bubble != null) {
+        a.bubble = bubble;
+        a.bubbleT = 2.2;
+      }
+    }
+
+    /** @deprecated use HQ — kept as alias for company tasks */
     assignBrief(text) {
-      this.emit("chat", { who: "You", body: text, kind: "chat" });
-      const workers = [...this.agents].sort(() => Math.random() - 0.5).slice(0, 3);
-      workers.forEach((a, i) => {
-        a.task = text;
-        a.state = "type";
-        a.thought = "разбираю бриф…";
-        a.bubble = i === 0 ? "Беру!" : "Ок";
-        a.bubbleT = 2.5;
-        setTimeout(() => {
-          this.emit("chat", {
-            who: a.name,
-            body: i === 0 ? `Принял: «${text}»` : `Помогаю с задачей`,
-            kind: "output",
-          });
-        }, 400 + i * 450);
-      });
+      if (this.hq) this.hq.submitCompanyTask(text);
+      else this.emitChat({ channel: "ceo", who: "You", body: text, kind: "chat" });
     }
 
     workBurst() {
@@ -445,7 +499,7 @@
         a.x = a.homeCol * TILE + TILE / 2;
         a.y = a.homeRow * TILE + TILE / 2;
       });
-      this.emit("chat", { who: "Ada", body: "Work burst — все в фокусе.", kind: "output" });
+      this.emitChat({ channel: "office", who: "Ada", body: "Work burst — все в фокусе по своим зонам.", kind: "output" });
     }
 
     standup() {
@@ -460,18 +514,31 @@
         a.bubbleT = 3;
         a.path = this.simplePath(a.col, a.row, a.homeCol, a.homeRow);
       });
-      this.emit("chat", { who: "Ada", body: "Standup! Blockers в канал.", kind: "output" });
+      this.emitChat({ channel: "office", who: "Ada", body: "Standup! Blockers — только через меня (CEO).", kind: "output" });
       clearTimeout(this._standupT);
       this._standupT = setTimeout(() => {
-        this.agents.forEach((a, i) => {
-          const seats = this.furniture.filter((f) => f.isSeat);
-          const seat = seats[i % seats.length];
+        this.agents.forEach((a) => {
+          a.homeCol = a.col; // will restore below
+        });
+        // Return each agent to their zone seat (home from spawn)
+        this.agents.forEach((a) => {
+          // recover original home from spawn stored on agent — re-read from current home before standup overwrite
+        });
+        // Re-seat by area
+        const seats = this.furniture.filter((f) => f.isSeat);
+        const used = new Set();
+        this.agents.forEach((a) => {
+          const anchor = (window.OfficeHQ && OfficeHQ.areaAnchor(a.area)) || { col: a.homeCol, row: a.homeRow };
+          const free = seats.filter((s) => !used.has(s.uid));
+          free.sort((x, y) => Math.hypot(x.col - anchor.col, x.row - anchor.row) - Math.hypot(y.col - anchor.col, y.row - anchor.row));
+          const seat = free[0] || seats[0];
+          if (seat) used.add(seat.uid);
           a.homeCol = seat.col;
           a.homeRow = seat.row;
           a.path = this.simplePath(a.col, a.row, seat.col, seat.row);
           a.state = "walk";
         });
-        this.emit("chat", { who: "Ada", body: "Разбежались. Пишите апдейты.", kind: "output" });
+        this.emitChat({ channel: "office", who: "Ada", body: "Разбежались по зонам. Апдейты — мне.", kind: "output" });
       }, 7000);
     }
 
@@ -514,25 +581,25 @@
       }
 
       this.chatAcc += dt;
-      if (this.chatAcc > 3.2) {
+      if (this.idleChat && this.chatAcc > 5.5) {
         this.chatAcc = 0;
-        const [from, to, text] = LINES[this.lineIdx % LINES.length];
+        const line = LINES[this.lineIdx % LINES.length];
         this.lineIdx++;
-        this.emit("chat", {
-          who: from,
-          body: to === "Team" ? text : `@${to} ${text}`,
-          kind: "chat",
-        });
-        const speaker = this.agents.find((a) => a.name === from);
+        if (this.hq) this.hq.idleChatter(line);
+        else {
+          const [from, to, text] = line;
+          this.emitChat({
+            channel: "office",
+            who: from,
+            body: to === "Team" ? text : `@${to} ${text}`,
+            kind: "chat",
+          });
+        }
+        const speaker = this.agents.find((a) => a.name === line[0]);
         if (speaker) {
+          const text = line[2];
           speaker.bubble = text.slice(0, 26) + (text.length > 26 ? "…" : "");
           speaker.bubbleT = 3;
-        }
-        if (Math.random() > 0.5) {
-          const a = this.agents[Math.floor(Math.random() * this.agents.length)];
-          a.task = TASKS[Math.floor(Math.random() * TASKS.length)];
-          a.state = Math.random() > 0.4 ? "type" : "read";
-          this.emit("chat", { who: a.name, body: a.task, kind: "output" });
         }
       }
 
