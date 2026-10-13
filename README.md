@@ -23,12 +23,27 @@ python3 -m http.server 8765
 
 ## Живой ИИ (роли агентов)
 
-1. Открой **AI Settings** внизу.
-2. Вставь API-ключ (удобнее всего [OpenRouter](https://openrouter.ai/keys)).
-3. Включи «Живой LLM» → Сохранить → Тест Ada.
+### Вариант A — Ollama (бесплатно, локально)
+
+1. Установи [Ollama](https://ollama.com/download).
+2. Скачай модель:
+   ```bash
+   ollama pull llama3.2
+   ```
+3. Запусти с CORS для браузера (порт офиса `8765`):
+   ```bash
+   OLLAMA_ORIGINS="http://127.0.0.1:8765,http://localhost:8765" ollama serve
+   ```
+   Если Ollama уже как приложение macOS — закрой его и запусти команду выше в терминале.
+4. В Pixel Office: **AI Settings** → провайдер **Ollama** → модель `llama3.2` → включи LLM → **Сохранить** → **Тест Ada**.
+
+Ключ не нужен. Всё крутится на твоём Mac.
+
+### Вариант B — облако (платно)
+
+OpenRouter / OpenAI / Anthropic: ключ в **AI Settings**.
 
 Каждый агент работает под своим system prompt (CEO / Frontend / Backend / QA / Research / Design).
-Ключ хранится только в `localStorage` браузера.
 
 ## Ассеты
 

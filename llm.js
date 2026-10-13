@@ -1,16 +1,16 @@
 /**
  * LLM client for Pixel Office agents.
- * Supports: OpenAI, OpenRouter, Anthropic (Messages API).
- * Key is stored only in localStorage (never committed).
+ * Supports: Ollama (local, free), OpenAI, OpenRouter, Anthropic.
+ * Cloud keys are stored only in localStorage (never committed).
  */
 (() => {
   const STORAGE_KEY = "pixel_office_llm_v1";
 
   const DEFAULTS = {
     enabled: false,
-    provider: "openrouter", // openrouter | openai | anthropic
+    provider: "ollama", // ollama | openrouter | openai | anthropic
     apiKey: "",
-    model: "openai/gpt-4o-mini",
+    model: "llama3.2",
     baseUrl: "", // optional override
   };
 
@@ -36,15 +36,27 @@
     return loadConfig();
   }
 
-  function isReady() {
-    const c = loadConfig();
-    return !!(c.enabled && c.apiKey && c.model);
+  function needsApiKey(provider) {
+    return provider !== "ollama";
   }
 
-  function endpoint(cfg) {
-    if (cfg.baseUrl) return cfg.baseUrl.replace(/\/$/, "");
+  function isReady() {
+    const c = loadConfig();
+    if (!c.enabled || !c.model) return false;
+    if (needsApiKey(c.provider) && !c.apiKey) return false;
+    return true;
+  }
+
+  function chatCompletionsUrl(cfg) {
+    if (cfg.baseUrl) {
+      const base = cfg.baseUrl.replace(/\/$/, "");
+      if (base.endsWith("/chat/completions")) return base;
+      if (base.endsWith("/v1")) return base + "/chat/completions";
+      return base;
+    }
     if (cfg.provider === "anthropic") return "https://api.anthropic.com/v1/messages";
     if (cfg.provider === "openai") return "https://api.openai.com/v1/chat/completions";
+    if (cfg.provider === "ollama") return "http://127.0.0.1:11434/v1/chat/completions";
     return "https://openrouter.ai/api/v1/chat/completions";
   }
 
@@ -76,12 +88,32 @@
     return null;
   }
 
+  function corsHint(provider, errMsg) {
+    if (provider !== "ollama") return errMsg;
+    const lower = String(errMsg || "").toLowerCase();
+    if (
+      lower.includes("failed to fetch") ||
+      lower.includes("networkerror") ||
+      lower.includes("cors") ||
+      lower.includes("load failed")
+    ) {
+      return (
+        errMsg +
+        " — Запусти Ollama с CORS: OLLAMA_ORIGINS=\"http://127.0.0.1:8765,http://localhost:8765\" ollama serve"
+      );
+    }
+    return errMsg;
+  }
+
   async function chat({ system, user, temperature = 0.4 }) {
     const cfg = loadConfig();
-    if (!cfg.apiKey) throw new Error("Нет API-ключа. Открой Settings и сохрани ключ.");
+    if (needsApiKey(cfg.provider) && !cfg.apiKey) {
+      throw new Error("Нет API-ключа. Открой Settings и сохрани ключ.");
+    }
+    if (!cfg.model) throw new Error("Не указана модель.");
 
     if (cfg.provider === "anthropic") {
-      const res = await fetch(endpoint(cfg), {
+      const res = await fetch(chatCompletionsUrl(cfg), {
         method: "POST",
         headers: {
           "content-type": "application/json",
@@ -105,31 +137,41 @@
       return { text, raw: data, json: extractJson(text) };
     }
 
-    // OpenAI-compatible (OpenAI / OpenRouter / custom)
-    const headers = {
-      "content-type": "application/json",
-      authorization: `Bearer ${cfg.apiKey}`,
-    };
+    // OpenAI-compatible (Ollama / OpenAI / OpenRouter / custom)
+    const headers = { "content-type": "application/json" };
+    if (cfg.apiKey) {
+      headers.authorization = `Bearer ${cfg.apiKey}`;
+    } else if (cfg.provider === "ollama") {
+      headers.authorization = "Bearer ollama";
+    }
+
     if (cfg.provider === "openrouter") {
       headers["HTTP-Referer"] = location.origin;
       headers["X-Title"] = "Pixel Office";
     }
 
-    const res = await fetch(endpoint(cfg), {
-      method: "POST",
-      headers,
-      body: JSON.stringify({
-        model: cfg.model,
-        temperature,
-        messages: [
-          { role: "system", content: system },
-          { role: "user", content: user },
-        ],
-      }),
-    });
+    let res;
+    try {
+      res = await fetch(chatCompletionsUrl(cfg), {
+        method: "POST",
+        headers,
+        body: JSON.stringify({
+          model: cfg.model,
+          temperature,
+          messages: [
+            { role: "system", content: system },
+            { role: "user", content: user },
+          ],
+        }),
+      });
+    } catch (err) {
+      throw new Error(corsHint(cfg.provider, err.message || String(err)));
+    }
+
     const data = await res.json().catch(() => ({}));
     if (!res.ok) {
-      throw new Error(data?.error?.message || data?.message || `LLM HTTP ${res.status}`);
+      const msg = data?.error?.message || data?.message || `LLM HTTP ${res.status}`;
+      throw new Error(corsHint(cfg.provider, msg));
     }
     const text = data?.choices?.[0]?.message?.content || "";
     return { text, raw: data, json: extractJson(text) };
@@ -141,13 +183,27 @@
     return chat({ system: role.system, user: userPrompt });
   }
 
+  async function listOllamaModels() {
+    const cfg = loadConfig();
+    const base = (cfg.baseUrl || "http://127.0.0.1:11434").replace(/\/$/, "")
+      .replace(/\/v1\/chat\/completions$/, "")
+      .replace(/\/v1$/, "");
+    const res = await fetch(base + "/api/tags");
+    if (!res.ok) throw new Error("Ollama HTTP " + res.status);
+    const data = await res.json();
+    return (data.models || []).map((m) => m.name);
+  }
+
   window.OfficeLLM = {
     DEFAULTS,
     loadConfig,
     saveConfig,
     isReady,
+    needsApiKey,
     chat,
     askAgent,
     extractJson,
+    listOllamaModels,
+    chatCompletionsUrl,
   };
 })();

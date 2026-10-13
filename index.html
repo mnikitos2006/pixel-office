@@ -462,27 +462,29 @@
     <div class="modal">
       <h2>AI Settings</h2>
       <p class="hint" style="margin-top:0">
-        Каждый агент = отдельная роль (system prompt). Нужен API-ключ провайдера.
-        Ключ хранится только в браузере (localStorage), в git не попадает.
+        Каждый агент = отдельная роль (system prompt).
+        <strong>Ollama</strong> — бесплатно на твоём Mac, без кредитов.
+        Облачные ключи хранятся только в браузере (localStorage).
       </p>
       <label><input type="checkbox" id="cfgEnabled" /> Включить живой LLM</label>
       <label>Провайдер</label>
       <select id="cfgProvider">
-        <option value="openrouter">OpenRouter (рекомендую)</option>
+        <option value="ollama">Ollama (локально, бесплатно)</option>
+        <option value="openrouter">OpenRouter</option>
         <option value="openai">OpenAI</option>
         <option value="anthropic">Anthropic</option>
       </select>
-      <label>API key</label>
-      <input id="cfgKey" type="password" placeholder="sk-… или ключ OpenRouter" autocomplete="off" />
+      <label id="cfgKeyLabel">API key</label>
+      <input id="cfgKey" type="password" placeholder="для Ollama не нужен" autocomplete="off" />
       <label>Модель</label>
-      <input id="cfgModel" type="text" placeholder="openai/gpt-4o-mini" />
+      <input id="cfgModel" type="text" placeholder="llama3.2" />
       <label>Base URL (опционально)</label>
-      <input id="cfgBase" type="text" placeholder="оставьте пустым" />
-      <div class="hint">
-        OpenRouter: <a href="https://openrouter.ai/keys" target="_blank" rel="noopener">openrouter.ai/keys</a><br>
-        OpenAI: <a href="https://platform.openai.com/api-keys" target="_blank" rel="noopener">platform.openai.com</a><br>
-        Anthropic: <a href="https://console.anthropic.com/" target="_blank" rel="noopener">console.anthropic.com</a><br>
-        Пример модели OpenRouter: <code>openai/gpt-4o-mini</code> · OpenAI: <code>gpt-4o-mini</code> · Anthropic: <code>claude-sonnet-4-5</code>
+      <input id="cfgBase" type="text" placeholder="Ollama: пусто = http://127.0.0.1:11434/v1" />
+      <div class="hint" id="cfgHint">
+        <strong>Ollama:</strong> установи с <a href="https://ollama.com/download" target="_blank" rel="noopener">ollama.com</a>,
+        затем <code>ollama pull llama3.2</code>. Для браузера запусти с CORS:<br>
+        <code>OLLAMA_ORIGINS="http://127.0.0.1:8765,http://localhost:8765" ollama serve</code><br>
+        Модель: <code>llama3.2</code> / <code>qwen2.5</code> / <code>mistral</code>
       </div>
       <div class="row">
         <button type="button" id="cfgSave">Сохранить</button>
@@ -494,7 +496,7 @@
   </div>
 
   <script src="roles.js?v=1"></script>
-  <script src="llm.js?v=1"></script>
+  <script src="llm.js?v=2"></script>
   <script src="deliverables.js?v=1"></script>
   <script src="hq.js?v=3"></script>
   <script src="office.js?v=5"></script>
@@ -685,14 +687,37 @@
       el.classList.toggle("ai-off", !on);
     }
 
+    function syncProviderUi() {
+      const p = document.getElementById("cfgProvider").value;
+      const keyInput = document.getElementById("cfgKey");
+      const keyLabel = document.getElementById("cfgKeyLabel");
+      const hint = document.getElementById("cfgHint");
+      const needsKey = OfficeLLM.needsApiKey(p);
+      keyInput.disabled = !needsKey;
+      keyInput.placeholder = needsKey ? "sk-… или ключ OpenRouter" : "для Ollama не нужен";
+      keyLabel.textContent = needsKey ? "API key" : "API key (не нужен для Ollama)";
+      if (p === "ollama") {
+        hint.innerHTML =
+          '<strong>Ollama:</strong> <a href="https://ollama.com/download" target="_blank" rel="noopener">ollama.com</a> → ' +
+          '<code>ollama pull llama3.2</code>. CORS: ' +
+          '<code>OLLAMA_ORIGINS="http://127.0.0.1:8765,http://localhost:8765" ollama serve</code>';
+      } else {
+        hint.innerHTML =
+          'OpenRouter: <a href="https://openrouter.ai/keys" target="_blank" rel="noopener">keys</a> · ' +
+          'OpenAI: <a href="https://platform.openai.com/api-keys" target="_blank" rel="noopener">keys</a> · ' +
+          'Anthropic: <a href="https://console.anthropic.com/" target="_blank" rel="noopener">console</a>';
+      }
+    }
+
     function openSettings() {
       const cfg = OfficeLLM.loadConfig();
       document.getElementById("cfgEnabled").checked = !!cfg.enabled;
-      document.getElementById("cfgProvider").value = cfg.provider || "openrouter";
+      document.getElementById("cfgProvider").value = cfg.provider || "ollama";
       document.getElementById("cfgKey").value = cfg.apiKey || "";
-      document.getElementById("cfgModel").value = cfg.model || "";
+      document.getElementById("cfgModel").value = cfg.model || "llama3.2";
       document.getElementById("cfgBase").value = cfg.baseUrl || "";
       document.getElementById("cfgStatus").textContent = "";
+      syncProviderUi();
       document.getElementById("settingsModal").classList.add("open");
     }
 
@@ -706,9 +731,11 @@
     document.getElementById("cfgProvider").addEventListener("change", () => {
       const p = document.getElementById("cfgProvider").value;
       const model = document.getElementById("cfgModel");
-      if (p === "openrouter" && !model.value.includes("/")) model.value = "openai/gpt-4o-mini";
+      if (p === "ollama") model.value = "llama3.2";
+      if (p === "openrouter") model.value = "openai/gpt-4o-mini";
       if (p === "openai") model.value = "gpt-4o-mini";
       if (p === "anthropic") model.value = "claude-sonnet-4-5";
+      syncProviderUi();
     });
     document.getElementById("cfgSave").addEventListener("click", () => {
       OfficeLLM.saveConfig({
@@ -719,16 +746,18 @@
         baseUrl: document.getElementById("cfgBase").value.trim(),
       });
       refreshAiStatus();
+      const p = document.getElementById("cfgProvider").value;
       document.getElementById("cfgStatus").textContent = OfficeLLM.isReady()
         ? "Сохранено. Живой ИИ включён для всех агентов."
-        : "Сохранено. Чтобы включить ИИ — поставь галочку и API key.";
+        : p === "ollama"
+          ? "Сохранено. Включи галочку «Живой LLM» и укажи модель (например llama3.2)."
+          : "Сохранено. Чтобы включить ИИ — поставь галочку и API key.";
     });
     document.getElementById("cfgTest").addEventListener("click", async () => {
       const status = document.getElementById("cfgStatus");
-      // save first
       document.getElementById("cfgSave").click();
       if (!OfficeLLM.isReady()) {
-        status.textContent = "Сначала включи LLM и вставь ключ.";
+        status.textContent = "Сначала включи LLM" + (OfficeLLM.needsApiKey(document.getElementById("cfgProvider").value) ? " и вставь ключ." : ".");
         return;
       }
       status.textContent = "Тестирую Ada…";
@@ -804,7 +833,7 @@
           addMsg({
             channel: "ceo",
             who: "Ada",
-            body: "Сейчас я в demo-режиме. Чтобы включить настоящий ИИ для всех агентов: кнопка AI Settings → ключ OpenRouter/OpenAI/Anthropic → «Включить живой LLM».",
+            body: "Сейчас demo-режим. Живой ИИ бесплатно: AI Settings → Ollama → включи LLM → модель llama3.2 (нужен установленный Ollama).",
             kind: "system",
           });
         }
