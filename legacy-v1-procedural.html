@@ -1,0 +1,1031 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Pixel Office — Legacy v1 (procedural)</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --bg-deep: #0c1220;
+      --bg-panel: #121a2b;
+      --bg-panel-2: #182238;
+      --line: #2a3a55;
+      --text: #e8eef8;
+      --muted: #8b9bb8;
+      --accent: #3dd68c;
+      --accent-dim: #1f8f5a;
+      --warn: #f0b429;
+      --danger: #ef6b6b;
+      --desk: #8b5a2b;
+      --floor: #3d5a40;
+      --floor-alt: #355238;
+      --wall: #4a5568;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    html, body {
+      height: 100%;
+      background:
+        radial-gradient(ellipse 80% 50% at 20% 0%, #1a2744 0%, transparent 55%),
+        radial-gradient(ellipse 60% 40% at 90% 80%, #132a22 0%, transparent 50%),
+        var(--bg-deep);
+      color: var(--text);
+      font-family: "IBM Plex Mono", ui-monospace, monospace;
+      overflow: hidden;
+    }
+
+    .app {
+      display: grid;
+      grid-template-rows: auto 1fr auto;
+      height: 100%;
+      max-width: 1400px;
+      margin: 0 auto;
+      padding: 12px;
+      gap: 10px;
+    }
+
+    .topbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 10px 14px;
+      background: linear-gradient(180deg, #1a2438, #121a2b);
+      border: 2px solid var(--line);
+      box-shadow: inset 0 1px 0 rgba(255,255,255,0.06);
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      min-width: 0;
+    }
+
+    .brand-mark {
+      width: 28px;
+      height: 28px;
+      image-rendering: pixelated;
+      background:
+        linear-gradient(90deg, #3dd68c 0 4px, transparent 4px 8px, #3dd68c 8px 12px, transparent 12px 16px, #3dd68c 16px 20px, transparent 20px 24px, #3dd68c 24px 28px),
+        linear-gradient(#2a3a55, #2a3a55);
+      background-size: 28px 4px, 28px 28px;
+      background-position: 0 12px, 0 0;
+      background-repeat: no-repeat;
+      border: 2px solid var(--accent);
+      flex-shrink: 0;
+    }
+
+    .brand h1 {
+      font-family: "Press Start 2P", monospace;
+      font-size: 11px;
+      letter-spacing: 0.5px;
+      line-height: 1.4;
+      white-space: nowrap;
+    }
+
+    .brand p {
+      color: var(--muted);
+      font-size: 11px;
+      margin-top: 3px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .status-pills {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+    }
+
+    .pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 6px 10px;
+      border: 1px solid var(--line);
+      background: var(--bg-panel-2);
+      font-size: 11px;
+      color: var(--muted);
+    }
+
+    .dot {
+      width: 8px;
+      height: 8px;
+      background: var(--accent);
+      box-shadow: 0 0 0 2px rgba(61, 214, 140, 0.25);
+      animation: pulse 1.6s ease-in-out infinite;
+    }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 1; transform: scale(1); }
+      50% { opacity: 0.55; transform: scale(0.85); }
+    }
+
+    .main {
+      display: grid;
+      grid-template-columns: 1fr 340px;
+      gap: 10px;
+      min-height: 0;
+    }
+
+    .stage-wrap {
+      position: relative;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border: 2px solid var(--line);
+      background: #070b12;
+      overflow: hidden;
+      min-height: 0;
+    }
+
+    canvas#office {
+      display: block;
+      flex-shrink: 0;
+      image-rendering: -moz-crisp-edges;
+      image-rendering: pixelated;
+      image-rendering: crisp-edges;
+      cursor: crosshair;
+    }
+
+    .hint {
+      position: absolute;
+      left: 10px;
+      bottom: 10px;
+      font-size: 10px;
+      color: rgba(232, 238, 248, 0.7);
+      background: rgba(12, 18, 32, 0.75);
+      border: 1px solid var(--line);
+      padding: 6px 8px;
+      pointer-events: none;
+    }
+
+    .side {
+      display: grid;
+      grid-template-rows: auto 1fr auto;
+      min-height: 0;
+      border: 2px solid var(--line);
+      background: var(--bg-panel);
+    }
+
+    .side-tabs {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      border-bottom: 2px solid var(--line);
+    }
+
+    .side-tabs button {
+      appearance: none;
+      border: 0;
+      background: transparent;
+      color: var(--muted);
+      font: inherit;
+      font-size: 11px;
+      padding: 10px;
+      cursor: pointer;
+    }
+
+    .side-tabs button.active {
+      color: var(--text);
+      background: var(--bg-panel-2);
+      box-shadow: inset 0 -2px 0 var(--accent);
+    }
+
+    .panel {
+      display: none;
+      min-height: 0;
+      overflow: auto;
+    }
+
+    .panel.active { display: block; }
+
+    .chat {
+      padding: 8px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .msg {
+      border: 1px solid var(--line);
+      background: rgba(255,255,255,0.02);
+      padding: 8px;
+      animation: fadeIn 0.35s ease;
+    }
+
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(4px); }
+      to { opacity: 1; transform: none; }
+    }
+
+    .msg .meta {
+      display: flex;
+      justify-content: space-between;
+      gap: 8px;
+      margin-bottom: 4px;
+      font-size: 10px;
+    }
+
+    .msg .who { font-weight: 600; }
+    .msg .when { color: var(--muted); }
+    .msg .body { font-size: 12px; line-height: 1.45; color: #d5deee; }
+
+    .agent-list { padding: 8px; display: flex; flex-direction: column; gap: 6px; }
+
+    .agent-row {
+      display: grid;
+      grid-template-columns: 18px 1fr auto;
+      gap: 8px;
+      align-items: center;
+      padding: 8px;
+      border: 1px solid var(--line);
+      background: rgba(255,255,255,0.02);
+      cursor: pointer;
+      text-align: left;
+      color: inherit;
+      font: inherit;
+      width: 100%;
+    }
+
+    .agent-row:hover, .agent-row.selected {
+      border-color: var(--accent-dim);
+      background: rgba(61, 214, 140, 0.06);
+    }
+
+    .agent-swatch {
+      width: 14px;
+      height: 14px;
+      border: 1px solid rgba(255,255,255,0.25);
+    }
+
+    .agent-row .name { font-size: 12px; font-weight: 600; }
+    .agent-row .role { font-size: 10px; color: var(--muted); margin-top: 2px; }
+    .agent-row .state {
+      font-size: 10px;
+      color: var(--accent);
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+
+    .composer {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 6px;
+      padding: 8px;
+      border-top: 2px solid var(--line);
+      background: var(--bg-panel-2);
+    }
+
+    .composer input {
+      background: #0c1220;
+      border: 1px solid var(--line);
+      color: var(--text);
+      padding: 10px;
+      font: inherit;
+      font-size: 12px;
+      outline: none;
+    }
+
+    .composer input:focus { border-color: var(--accent-dim); }
+
+    .composer button, .toolbar button {
+      appearance: none;
+      border: 1px solid var(--accent-dim);
+      background: linear-gradient(180deg, #2a9b66, #1f8f5a);
+      color: #04140c;
+      font: inherit;
+      font-size: 11px;
+      font-weight: 600;
+      padding: 10px 12px;
+      cursor: pointer;
+    }
+
+    .composer button:hover, .toolbar button:hover {
+      filter: brightness(1.08);
+    }
+
+    .toolbar {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: space-between;
+      padding: 8px 10px;
+      border: 2px solid var(--line);
+      background: linear-gradient(180deg, #151e30, #101826);
+    }
+
+    .toolbar .left, .toolbar .right {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      align-items: center;
+    }
+
+    .toolbar .ghost {
+      background: transparent;
+      border-color: var(--line);
+      color: var(--muted);
+    }
+
+    .detail {
+      position: absolute;
+      top: 10px;
+      right: 10px;
+      width: min(280px, calc(100% - 20px));
+      background: rgba(12, 18, 32, 0.92);
+      border: 2px solid var(--line);
+      padding: 10px;
+      display: none;
+      backdrop-filter: blur(4px);
+    }
+
+    .detail.open { display: block; }
+    .detail h3 {
+      font-family: "Press Start 2P", monospace;
+      font-size: 9px;
+      margin-bottom: 8px;
+    }
+    .detail p { font-size: 11px; color: var(--muted); line-height: 1.5; margin-bottom: 6px; }
+    .detail .task { color: var(--text); }
+
+    @media (max-width: 900px) {
+      .main { grid-template-columns: 1fr; grid-template-rows: minmax(280px, 1fr) minmax(220px, 40vh); }
+      .brand p { display: none; }
+      .app { padding: 8px; }
+    }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <header class="topbar">
+      <div class="brand">
+        <div class="brand-mark" aria-hidden="true"></div>
+        <div>
+          <h1>PIXEL OFFICE <span style="font-size:8px;color:#8b9bb8">LEGACY v1</span></h1>
+          <p>LEGACY v1 (процедурный офис) — откат · /pixel-office/legacy-v1-procedural.html</p>
+        </div>
+      </div>
+      <div class="status-pills">
+        <div class="pill"><span class="dot"></span> Live</div>
+        <div class="pill" id="onlineCount">0 online</div>
+        <div class="pill" id="clock">09:00</div>
+      </div>
+    </header>
+
+    <div class="main">
+      <div class="stage-wrap">
+        <canvas id="office" width="640" height="400"></canvas>
+        <div class="hint">Кликни агента · WASD / стрелки — камера · пробел — пауза</div>
+        <aside class="detail" id="detail">
+          <h3 id="detailName">Agent</h3>
+          <p id="detailRole"></p>
+          <p class="task" id="detailTask"></p>
+          <p id="detailThought"></p>
+        </aside>
+      </div>
+
+      <aside class="side">
+        <div class="side-tabs">
+          <button class="active" data-tab="chat">Chat</button>
+          <button data-tab="agents">Agents</button>
+        </div>
+        <div class="panel active" id="panel-chat">
+          <div class="chat" id="chat"></div>
+        </div>
+        <div class="panel" id="panel-agents">
+          <div class="agent-list" id="agentList"></div>
+        </div>
+        <form class="composer" id="composer">
+          <input id="brief" type="text" maxlength="160" placeholder="Дай задачу офису…" autocomplete="off" />
+          <button type="submit">Send</button>
+        </form>
+      </aside>
+    </div>
+
+    <footer class="toolbar">
+      <div class="left">
+        <button type="button" id="btnPause">Pause</button>
+        <button type="button" class="ghost" id="btnBurst">Work burst</button>
+        <button type="button" class="ghost" id="btnMeeting">Standup</button>
+      </div>
+      <div class="right">
+        <span class="pill" id="taskStat" style="border:0;background:transparent;padding:0">0 задач в работе</span>
+      </div>
+    </footer>
+  </div>
+
+  <script>
+    const TILE = 16;
+    const COLS = 40;
+    const ROWS = 25;
+
+    const COLORS = {
+      floor: "#3d5a40",
+      floorAlt: "#355238",
+      wall: "#5b6b82",
+      wallDark: "#3f4b5e",
+      carpet: "#2f4a6e",
+      carpetAlt: "#274062",
+      desk: "#8b5a2b",
+      deskTop: "#a86b34",
+      chair: "#2a3344",
+      plant: "#2f9e44",
+      pot: "#7a4a28",
+      screen: "#7ad7ff",
+      screenDim: "#3a7a96",
+      coffee: "#6b3a1f",
+      white: "#e8eef8",
+      shadow: "rgba(0,0,0,0.25)",
+    };
+
+    const AGENTS = [
+      { id: "ada", name: "Ada", role: "Director", color: "#5b8cff", hair: "#1a1a2e" },
+      { id: "grace", name: "Grace", role: "Frontend", color: "#3dd68c", hair: "#f0c27a" },
+      { id: "linus", name: "Linus", role: "Backend", color: "#f0b429", hair: "#2b2b2b" },
+      { id: "turing", name: "Turing", role: "Research", color: "#c084fc", hair: "#d9d9d9" },
+      { id: "hopper", name: "Hopper", role: "QA", color: "#ef6b6b", hair: "#8b4513" },
+      { id: "noether", name: "Noether", role: "Design", color: "#38bdf8", hair: "#111827" },
+      { id: "babbage", name: "Babbage", role: "DevOps", color: "#fb923c", hair: "#4b5563" },
+      { id: "dijkstra", name: "Dijkstra", role: "Docs", color: "#a3e635", hair: "#1f2937" },
+    ];
+
+    const TASKS = [
+      "пишет API-контракт для биллинга",
+      "полирует pixel-спрайты агентов",
+      "чинит флакающий e2e тест",
+      "собирает standup-заметки",
+      "деплоит staging",
+      "рисует layout для inbox",
+      "ревьюит PR #142",
+      "обновляет memory агентов",
+      "проверяет A2A handoff",
+      "пишет docs по office skin",
+    ];
+
+    const LINES = [
+      ["Ada", "Grace", "Сетка на 45% — можешь параллельно взять inbox?"],
+      ["Grace", "Ada", "Беру. Кину макет через 2 тика."],
+      ["Linus", "Babbage", "Staging зелёный. Катим?"],
+      ["Babbage", "Linus", "Катим. Смотрю логи 2 минуты."],
+      ["Hopper", "Grace", "Нашёл баг: bubble клипается у края."],
+      ["Grace", "Hopper", "Фикс в PR. Спасибо ✨"],
+      ["Turing", "Ada", "Memory recall стабилен на 12 агентах."],
+      ["Ada", "Team", "Standup через 5 — blockers в канал."],
+      ["Noether", "Dijkstra", "Нужна иконка для spectator mode."],
+      ["Dijkstra", "Noether", "Добавлю в docs + export SVG."],
+      ["Hopper", "Linus", "Flaky test упал на race condition."],
+      ["Linus", "Hopper", "Ловлю. Mutex вокруг queue."],
+    ];
+
+    const THOUGHTS = [
+      "если вынести handoff в очередь…",
+      "нужен ретрай на tool call",
+      "pixel camera чуть дрожит",
+      "memory chunk слишком жирный",
+      "лучше показать XP над головой",
+      "spectator mode почти готов",
+    ];
+
+    // ---- map ---------------------------------------------------------------
+    // 0 floor, 1 wall, 2 carpet, 3 desk, 4 plant, 5 coffee
+    const map = Array.from({ length: ROWS }, () => Array(COLS).fill(0));
+
+    function fillRect(x, y, w, h, v) {
+      for (let j = y; j < y + h; j++)
+        for (let i = x; i < x + w; i++)
+          if (j >= 0 && j < ROWS && i >= 0 && i < COLS) map[j][i] = v;
+    }
+
+    // outer walls
+    fillRect(0, 0, COLS, 1, 1);
+    fillRect(0, ROWS - 1, COLS, 1, 1);
+    fillRect(0, 0, 1, ROWS, 1);
+    fillRect(COLS - 1, 0, 1, ROWS, 1);
+
+    // rooms / meeting carpet
+    fillRect(2, 2, 10, 7, 2);
+    fillRect(28, 2, 10, 6, 2);
+    // desks (tile markers)
+    const desks = [
+      [4, 12], [8, 12], [12, 12], [16, 12],
+      [4, 17], [8, 17], [12, 17], [16, 17],
+      [24, 12], [28, 12], [32, 12],
+      [24, 17], [28, 17], [32, 17],
+    ];
+    desks.forEach(([x, y]) => {
+      fillRect(x, y, 2, 1, 3);
+    });
+
+    // plants & coffee
+    [[2, 10], [18, 3], [26, 9], [37, 10], [20, 20], [35, 20]].forEach(([x, y]) => map[y][x] = 4);
+    [[20, 8], [21, 8]].forEach(([x, y]) => map[y][x] = 5);
+
+    // inner walls (open office with partitions)
+    fillRect(21, 1, 1, 10, 1);
+    fillRect(1, 10, 14, 1, 1);
+    map[10][7] = 0; map[10][8] = 0; // doorways
+    map[5][21] = 0; map[6][21] = 0;
+
+    // ---- agents ------------------------------------------------------------
+    const agentState = AGENTS.map((a, i) => {
+      const desk = desks[i % desks.length];
+      return {
+        ...a,
+        x: desk[0] + 0.5,
+        y: desk[1] - 0.2,
+        homeX: desk[0] + 0.5,
+        homeY: desk[1] - 0.2,
+        vx: 0,
+        vy: 0,
+        state: "idle",
+        task: TASKS[i % TASKS.length],
+        thought: THOUGHTS[i % THOUGHTS.length],
+        frame: 0,
+        walkTimer: 0,
+        actionTimer: 1 + Math.random() * 3,
+        bubble: null,
+        bubbleT: 0,
+        selected: false,
+      };
+    });
+
+    // ---- UI helpers --------------------------------------------------------
+    const chatEl = document.getElementById("chat");
+    const agentListEl = document.getElementById("agentList");
+    const onlineEl = document.getElementById("onlineCount");
+    const clockEl = document.getElementById("clock");
+    const taskStatEl = document.getElementById("taskStat");
+    const detail = document.getElementById("detail");
+    const detailName = document.getElementById("detailName");
+    const detailRole = document.getElementById("detailRole");
+    const detailTask = document.getElementById("detailTask");
+    const detailThought = document.getElementById("detailThought");
+
+    let simTime = 9 * 60; // minutes
+    let paused = false;
+    let selectedId = null;
+    let camera = { x: 0, y: 0 };
+    const keys = new Set();
+
+    function addMsg(who, body, kind = "chat") {
+      const ag = AGENTS.find(a => a.name === who);
+      const el = document.createElement("div");
+      el.className = "msg";
+      el.innerHTML = `
+        <div class="meta">
+          <span class="who" style="color:${ag ? ag.color : "#8b9bb8"}">${kind === "output" ? "● output " : ""}${who}</span>
+          <span class="when">now</span>
+        </div>
+        <div class="body">${body}</div>
+      `;
+      chatEl.prepend(el);
+      while (chatEl.children.length > 40) chatEl.lastChild.remove();
+    }
+
+    function renderAgentList() {
+      agentListEl.innerHTML = agentState.map(a => `
+        <button class="agent-row ${selectedId === a.id ? "selected" : ""}" data-id="${a.id}">
+          <span class="agent-swatch" style="background:${a.color}"></span>
+          <span>
+            <div class="name">${a.name}</div>
+            <div class="role">${a.role}</div>
+          </span>
+          <span class="state">${a.state}</span>
+        </button>
+      `).join("");
+    }
+
+    function selectAgent(id) {
+      selectedId = id;
+      agentState.forEach(a => a.selected = a.id === id);
+      const a = agentState.find(x => x.id === id);
+      if (!a) {
+        detail.classList.remove("open");
+        renderAgentList();
+        return;
+      }
+      detail.classList.add("open");
+      detailName.textContent = a.name;
+      detailRole.textContent = a.role;
+      detailTask.textContent = `Задача: ${a.task}`;
+      detailThought.textContent = `Мысль: ${a.thought}`;
+      renderAgentList();
+    }
+
+    document.querySelectorAll(".side-tabs button").forEach(btn => {
+      btn.addEventListener("click", () => {
+        document.querySelectorAll(".side-tabs button").forEach(b => b.classList.remove("active"));
+        document.querySelectorAll(".panel").forEach(p => p.classList.remove("active"));
+        btn.classList.add("active");
+        document.getElementById(`panel-${btn.dataset.tab}`).classList.add("active");
+      });
+    });
+
+    agentListEl.addEventListener("click", (e) => {
+      const row = e.target.closest("[data-id]");
+      if (row) selectAgent(row.dataset.id);
+    });
+
+    document.getElementById("composer").addEventListener("submit", (e) => {
+      e.preventDefault();
+      const input = document.getElementById("brief");
+      const text = input.value.trim();
+      if (!text) return;
+      addMsg("You", text);
+      input.value = "";
+      // assign work
+      const workers = [...agentState].sort(() => Math.random() - 0.5).slice(0, 3);
+      workers.forEach((a, i) => {
+        a.task = text;
+        a.state = i === 0 ? "leading" : "working";
+        a.thought = "разбираю бриф…";
+        a.bubble = i === 0 ? "Беру в работу" : "На связи";
+        a.bubbleT = 2.5;
+        setTimeout(() => addMsg(a.name, i === 0
+          ? `Принял: «${text}». Распределяю.`
+          : `Помогаю Ada/лиду с «${text.slice(0, 40)}${text.length > 40 ? "…" : ""}»`,
+          "output"), 400 + i * 500);
+      });
+      renderAgentList();
+    });
+
+    document.getElementById("btnPause").addEventListener("click", () => {
+      paused = !paused;
+      document.getElementById("btnPause").textContent = paused ? "Resume" : "Pause";
+    });
+
+    document.getElementById("btnBurst").addEventListener("click", () => workBurst());
+    document.getElementById("btnMeeting").addEventListener("click", () => meeting());
+
+    window.addEventListener("keydown", (e) => {
+      keys.add(e.key.toLowerCase());
+      if (e.code === "Space") {
+        e.preventDefault();
+        paused = !paused;
+        document.getElementById("btnPause").textContent = paused ? "Resume" : "Pause";
+      }
+    });
+    window.addEventListener("keyup", (e) => keys.delete(e.key.toLowerCase()));
+
+    // ---- simulation --------------------------------------------------------
+    function workBurst() {
+      agentState.forEach(a => {
+        a.state = Math.random() > 0.3 ? "working" : "coding";
+        a.task = TASKS[Math.floor(Math.random() * TASKS.length)];
+        a.thought = THOUGHTS[Math.floor(Math.random() * THOUGHTS.length)];
+        a.bubble = "⚡";
+        a.bubbleT = 1.2;
+      });
+      addMsg("Ada", "Work burst — все в фокусе на 3 тика.", "output");
+      renderAgentList();
+    }
+
+    function meeting() {
+      const cx = 6, cy = 5;
+      agentState.forEach((a, i) => {
+        const angle = (i / agentState.length) * Math.PI * 2;
+        a.homeX = cx + Math.cos(angle) * 2.2;
+        a.homeY = cy + Math.sin(angle) * 1.6;
+        a.state = "meeting";
+        a.bubble = "standup";
+        a.bubbleT = 3;
+      });
+      addMsg("Ada", "Standup! Blockers в канал, 60 секунд.", "output");
+      setTimeout(() => {
+        agentState.forEach((a, i) => {
+          const desk = desks[i % desks.length];
+          a.homeX = desk[0] + 0.5;
+          a.homeY = desk[1] - 0.2;
+          a.state = "working";
+        });
+        addMsg("Ada", "Разбежались. Пишите апдейты.", "output");
+        renderAgentList();
+      }, 8000);
+      renderAgentList();
+    }
+
+    let lineIdx = 0;
+    function maybeChat(dt) {
+      if (!maybeChat.acc) maybeChat.acc = 0;
+      maybeChat.acc += dt;
+      if (maybeChat.acc < 2.8 + Math.random()) return;
+      maybeChat.acc = 0;
+      const [from, to, text] = LINES[lineIdx % LINES.length];
+      lineIdx++;
+      addMsg(from, to === "Team" ? text : `@${to} ${text}`);
+      const speaker = agentState.find(a => a.name === from);
+      if (speaker) {
+        speaker.bubble = text.slice(0, 28) + (text.length > 28 ? "…" : "");
+        speaker.bubbleT = 3.2;
+        speaker.state = "chatting";
+      }
+      const listener = agentState.find(a => a.name === to);
+      if (listener) {
+        listener.state = "listening";
+        listener.actionTimer = 2;
+      }
+
+      // occasional output log
+      if (Math.random() > 0.45) {
+        const a = agentState[Math.floor(Math.random() * agentState.length)];
+        a.task = TASKS[Math.floor(Math.random() * TASKS.length)];
+        addMsg(a.name, a.task, "output");
+        a.state = "working";
+      }
+      renderAgentList();
+      if (selectedId) selectAgent(selectedId);
+    }
+
+    function updateAgents(dt) {
+      agentState.forEach(a => {
+        a.actionTimer -= dt;
+        a.frame += dt * (a.state === "working" || a.state === "coding" ? 8 : 4);
+        if (a.bubbleT > 0) a.bubbleT -= dt; else a.bubble = null;
+
+        // wander / return home
+        const dx = a.homeX - a.x;
+        const dy = a.homeY - a.y;
+        const dist = Math.hypot(dx, dy);
+
+        if (a.state === "meeting" || dist > 0.15) {
+          a.vx = dx * 1.8;
+          a.vy = dy * 1.8;
+        } else if (a.actionTimer <= 0) {
+          // small wander near desk
+          if (Math.random() < 0.35 && a.state !== "meeting") {
+            a.homeX = Math.max(2, Math.min(COLS - 3, a.x + (Math.random() - 0.5) * 3));
+            a.homeY = Math.max(2, Math.min(ROWS - 3, a.y + (Math.random() - 0.5) * 2));
+            a.state = "walking";
+          } else {
+            const desk = desks[AGENTS.findIndex(x => x.id === a.id) % desks.length];
+            a.homeX = desk[0] + 0.5;
+            a.homeY = desk[1] - 0.2;
+            a.state = Math.random() > 0.5 ? "working" : "coding";
+            a.thought = THOUGHTS[Math.floor(Math.random() * THOUGHTS.length)];
+          }
+          a.actionTimer = 2 + Math.random() * 4;
+        } else {
+          a.vx *= 0.8;
+          a.vy *= 0.8;
+        }
+
+        a.x += a.vx * dt;
+        a.y += a.vy * dt;
+        a.x = Math.max(1.2, Math.min(COLS - 2.2, a.x));
+        a.y = Math.max(1.2, Math.min(ROWS - 2.2, a.y));
+      });
+    }
+
+    // ---- render ------------------------------------------------------------
+    const canvas = document.getElementById("office");
+    const ctx = canvas.getContext("2d");
+
+    function resize() {
+      const wrap = canvas.parentElement;
+      const dpr = window.devicePixelRatio || 1;
+      const GAME_W = COLS * TILE, GAME_H = ROWS * TILE;
+      const cssZoom = Math.max(1, Math.floor(Math.min(wrap.clientWidth / GAME_W, wrap.clientHeight / GAME_H)));
+      const outW = Math.round(GAME_W * cssZoom * dpr);
+      const outH = Math.round(GAME_H * cssZoom * dpr);
+      canvas.width = outW; canvas.height = outH;
+      canvas.style.width = (GAME_W * cssZoom) + "px";
+      canvas.style.height = (GAME_H * cssZoom) + "px";
+      ctx.setTransform(cssZoom * dpr, 0, 0, cssZoom * dpr, 0, 0);
+      ctx.imageSmoothingEnabled = false;
+    }
+    resize();
+    window.addEventListener("resize", resize);
+
+    function drawTile(x, y, color) {
+      ctx.fillStyle = color;
+      ctx.fillRect(x * TILE, y * TILE, TILE, TILE);
+    }
+
+    function drawDesk(tx, ty) {
+      ctx.fillStyle = COLORS.shadow;
+      ctx.fillRect(tx * TILE + 2, ty * TILE + 10, TILE * 2 - 2, 6);
+      ctx.fillStyle = COLORS.desk;
+      ctx.fillRect(tx * TILE, ty * TILE + 4, TILE * 2, 8);
+      ctx.fillStyle = COLORS.deskTop;
+      ctx.fillRect(tx * TILE, ty * TILE + 2, TILE * 2, 4);
+      // monitor
+      ctx.fillStyle = "#1a2333";
+      ctx.fillRect(tx * TILE + 8, ty * TILE - 6, 14, 10);
+      ctx.fillStyle = (Math.sin(performance.now() / 300 + tx) > 0 ? COLORS.screen : COLORS.screenDim);
+      ctx.fillRect(tx * TILE + 10, ty * TILE - 4, 10, 6);
+      // chair
+      ctx.fillStyle = COLORS.chair;
+      ctx.fillRect(tx * TILE + 10, ty * TILE + 12, 10, 6);
+    }
+
+    function drawPlant(tx, ty) {
+      ctx.fillStyle = COLORS.pot;
+      ctx.fillRect(tx * TILE + 5, ty * TILE + 10, 6, 5);
+      ctx.fillStyle = COLORS.plant;
+      ctx.fillRect(tx * TILE + 4, ty * TILE + 4, 8, 7);
+      ctx.fillRect(tx * TILE + 2, ty * TILE + 6, 3, 3);
+      ctx.fillRect(tx * TILE + 11, ty * TILE + 5, 3, 3);
+    }
+
+    function drawCoffee(tx, ty) {
+      ctx.fillStyle = "#3a4558";
+      ctx.fillRect(tx * TILE + 2, ty * TILE + 4, 12, 10);
+      ctx.fillStyle = COLORS.coffee;
+      ctx.fillRect(tx * TILE + 4, ty * TILE + 6, 4, 5);
+      ctx.fillStyle = COLORS.white;
+      ctx.fillRect(tx * TILE + 10, ty * TILE + 6, 2, 2);
+    }
+
+    function drawAgent(a) {
+      const px = a.x * TILE;
+      const py = a.y * TILE;
+      const bob = Math.sin(a.frame) * (a.state === "walking" || a.state === "meeting" ? 1.5 : 0.4);
+
+      // shadow
+      ctx.fillStyle = COLORS.shadow;
+      ctx.fillRect(px - 5, py + 8, 12, 3);
+
+      // body
+      ctx.fillStyle = a.color;
+      ctx.fillRect(px - 4, py - 2 + bob, 10, 10);
+
+      // head
+      ctx.fillStyle = "#f2d6b3";
+      ctx.fillRect(px - 3, py - 10 + bob, 8, 8);
+
+      // hair
+      ctx.fillStyle = a.hair;
+      ctx.fillRect(px - 3, py - 12 + bob, 8, 3);
+      ctx.fillRect(px - 4, py - 10 + bob, 2, 4);
+
+      // eyes
+      ctx.fillStyle = "#111";
+      ctx.fillRect(px - 1, py - 7 + bob, 2, 2);
+      ctx.fillRect(px + 3, py - 7 + bob, 2, 2);
+
+      // typing hands when working
+      if (a.state === "working" || a.state === "coding") {
+        ctx.fillStyle = "#f2d6b3";
+        const tap = Math.sin(a.frame * 2) > 0 ? 1 : 0;
+        ctx.fillRect(px - 6, py + 4 + bob + tap, 3, 2);
+        ctx.fillRect(px + 5, py + 4 + bob + (1 - tap), 3, 2);
+      }
+
+      // selection
+      if (a.selected) {
+        ctx.strokeStyle = COLORS.white;
+        ctx.lineWidth = 1;
+        ctx.strokeRect(px - 7, py - 14 + bob, 16, 24);
+      }
+
+      // name
+      ctx.fillStyle = "rgba(0,0,0,0.55)";
+      ctx.fillRect(px - 14, py + 12, 30, 8);
+      ctx.fillStyle = a.color;
+      ctx.font = "5px monospace";
+      ctx.textAlign = "center";
+      ctx.fillText(a.name, px + 1, py + 18);
+
+      // status pip
+      const statusColor = {
+        working: "#3dd68c",
+        coding: "#3dd68c",
+        chatting: "#5b8cff",
+        listening: "#38bdf8",
+        walking: "#f0b429",
+        meeting: "#c084fc",
+        leading: "#f0b429",
+        idle: "#8b9bb8",
+      }[a.state] || "#8b9bb8";
+      ctx.fillStyle = statusColor;
+      ctx.fillRect(px + 5, py - 12 + bob, 3, 3);
+
+      // bubble
+      if (a.bubble && a.bubbleT > 0) {
+        const text = a.bubble;
+        ctx.font = "6px IBM Plex Mono, monospace";
+        const w = Math.min(120, 8 + text.length * 4.2);
+        const bx = px - w / 2;
+        const by = py - 28 + bob;
+        ctx.fillStyle = "#e8eef8";
+        ctx.fillRect(bx, by, w, 12);
+        ctx.fillStyle = "#0c1220";
+        ctx.textAlign = "left";
+        ctx.fillText(text, bx + 3, by + 9);
+        // tail
+        ctx.fillStyle = "#e8eef8";
+        ctx.fillRect(px - 1, by + 12, 3, 3);
+      }
+    }
+
+    function draw() {
+      ctx.imageSmoothingEnabled = false;
+      // Clear in device pixels (ignore current transform)
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      const dpr = window.devicePixelRatio || 1;
+      const cssZoom = canvas.width / dpr / (COLS * TILE);
+      ctx.setTransform(cssZoom * dpr, 0, 0, cssZoom * dpr, 0, 0);
+      ctx.imageSmoothingEnabled = false;
+      ctx.fillStyle = "#070b12";
+      ctx.fillRect(0, 0, COLS * TILE, ROWS * TILE);
+
+      // floor
+      for (let y = 0; y < ROWS; y++) {
+        for (let x = 0; x < COLS; x++) {
+          const t = map[y][x];
+          if (t === 1) {
+            drawTile(x, y, (x + y) % 2 ? COLORS.wall : COLORS.wallDark);
+          } else if (t === 2) {
+            drawTile(x, y, (x + y) % 2 ? COLORS.carpet : COLORS.carpetAlt);
+          } else {
+            drawTile(x, y, (x + y) % 2 ? COLORS.floor : COLORS.floorAlt);
+          }
+        }
+      }
+
+      // furniture after floor
+      for (let y = 0; y < ROWS; y++) {
+        for (let x = 0; x < COLS; x++) {
+          const t = map[y][x];
+          if (t === 3) drawDesk(x, y);
+          if (t === 4) drawPlant(x, y);
+          if (t === 5) drawCoffee(x, y);
+        }
+      }
+
+      // meeting table on carpet
+      ctx.fillStyle = "#6b4f2a";
+      ctx.fillRect(5 * TILE, 4 * TILE, 4 * TILE, 2 * TILE);
+      ctx.fillStyle = "#8b6a3a";
+      ctx.fillRect(5 * TILE, 4 * TILE, 4 * TILE, 4);
+
+      // sort agents by y for depth
+      [...agentState].sort((a, b) => a.y - b.y).forEach(drawAgent);
+
+      // vignette (in game pixel space)
+      const gw = COLS * TILE, gh = ROWS * TILE;
+      const g = ctx.createRadialGradient(gw * 0.5, gh * 0.45, gh * 0.2, gw * 0.5, gh * 0.5, gh * 0.75);
+      g.addColorStop(0, "rgba(0,0,0,0)");
+      g.addColorStop(1, "rgba(0,0,0,0.35)");
+      ctx.fillStyle = g;
+      ctx.fillRect(0, 0, gw, gh);
+    }
+
+    canvas.addEventListener("click", (e) => {
+      const rect = canvas.getBoundingClientRect();
+      const sx = (e.clientX - rect.left) / rect.width * (COLS * TILE);
+      const sy = (e.clientY - rect.top) / rect.height * (ROWS * TILE);
+      const hit = [...agentState].reverse().find(a => {
+        const px = a.x * TILE, py = a.y * TILE;
+        return sx > px - 8 && sx < px + 10 && sy > py - 14 && sy < py + 12;
+      });
+      selectAgent(hit ? hit.id : null);
+    });
+
+    // ---- loop --------------------------------------------------------------
+    let last = performance.now();
+    function tick(now) {
+      const dt = Math.min(0.05, (now - last) / 1000);
+      last = now;
+
+      // camera keys currently unused visually (full map fits) — keep for future zoom
+      if (keys.has("arrowleft") || keys.has("a")) camera.x -= 40 * dt;
+      if (keys.has("arrowright") || keys.has("d")) camera.x += 40 * dt;
+      if (keys.has("arrowup") || keys.has("w")) camera.y -= 40 * dt;
+      if (keys.has("arrowdown") || keys.has("s")) camera.y += 40 * dt;
+
+      if (!paused) {
+        simTime += dt * 2.2; // speed up office clock
+        updateAgents(dt);
+        maybeChat(dt);
+      }
+
+      const hh = Math.floor(simTime / 60) % 24;
+      const mm = Math.floor(simTime % 60);
+      clockEl.textContent = `${String(hh).padStart(2, "0")}:${String(mm).padStart(2, "0")}`;
+      onlineEl.textContent = `${agentState.length} online`;
+      const busy = agentState.filter(a => ["working", "coding", "leading", "meeting"].includes(a.state)).length;
+      taskStatEl.textContent = `${busy} агентов в работе`;
+
+      draw();
+      requestAnimationFrame(tick);
+    }
+
+    // seed chat
+    addMsg("Ada", "Офис онлайн. Spectator mode включён.");
+    addMsg("Grace", "Спрайты тёплые, камера стабильна.", "output");
+    addMsg("Linus", "Очередь задач пустая — жду бриф.");
+    renderAgentList();
+    requestAnimationFrame(tick);
+  </script>
+</body>
+</html>
