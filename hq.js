@@ -64,7 +64,10 @@
       areaLabel: "Креатив / Research",
       reportsTo: "ada",
       skills: ["research", "analysis", "docs"],
-      keywords: ["research", "анализ", "исслед", "memory", "данные", "сравни", "изуч", "договор", "документ", "word", "файл", "контракт", "соглашен"],
+      keywords: [
+        "research", "анализ", "исслед", "данные", "сравни", "изуч", "договор", "документ",
+        "word", "файл", "контракт", "соглашен", "презентац", "рынок", "недвижим", "слайд", "pdf", "обзор",
+      ],
     },
     {
       id: "noether",
@@ -76,7 +79,7 @@
       areaLabel: "Креатив / Research",
       reportsTo: "ada",
       skills: ["design", "brand", "icons"],
-      keywords: ["дизайн", "design", "иконк", "макет", "бренд", "цвет", "визуал", "pixel"],
+      keywords: ["дизайн", "design", "иконк", "макет", "бренд", "цвет", "визуал", "pixel", "презентац", "слайд"],
     },
   ];
 
@@ -90,9 +93,50 @@
     return !!(window.OfficeDeliverables && OfficeDeliverables.detectKind(text));
   }
 
+  function wantsFile(text) {
+    return !!(window.OfficeDeliverables && OfficeDeliverables.wantsFile(text));
+  }
+
+  function fileKindFor(text) {
+    return (window.OfficeDeliverables && OfficeDeliverables.detectKind(text)) || null;
+  }
+
+  function formatOverride(text) {
+    return window.OfficeDeliverables?.detectFormatOverride?.(text) || null;
+  }
+
+  function isFollowUpFileAsk(text) {
+    const t = String(text).toLowerCase();
+    return /где\s+(она|он|сам|файл|презентац|таблиц)|скинь|пришли|ссылк|скача|в\s+pdf|электронн|файл(е|ом)?|а\s+где|формате|html|\.xls|exce?l/.test(
+      t,
+    );
+  }
+
+  /** True if message looks like a new brief, not only "send the file again" */
+  function detectFreshBrief(text) {
+    const t = String(text).toLowerCase();
+    if (t.length > 100) return true;
+    return /сделай|подготов|создай|нужн[ао]|сделать|презентац.*рынк|рынк.*недвижим|новый|другую|заново|метрик.*производ|производ.*метрик/.test(
+      t,
+    );
+  }
+
+  function hintForKind(kind) {
+    return window.OfficeDeliverables?.attachmentHint?.(kind) || "Скачай вложение ниже.";
+  }
+
   function pickAssignees(text) {
     const t = text.toLowerCase();
-    // Document / contract → research + CEO delivery (Turing prepares, Ada ships file)
+    const kind = window.OfficeDeliverables?.detectKind(text);
+    if (kind === "presentation" || kind === "report") {
+      return [
+        AGENTS.find((a) => a.id === "turing"),
+        AGENTS.find((a) => a.id === "noether"),
+      ].filter(Boolean);
+    }
+    if (kind === "csv" || kind === "excel") {
+      return [AGENTS.find((a) => a.id === "turing")].filter(Boolean);
+    }
     if (isDocRequest(text)) {
       return [AGENTS.find((a) => a.id === "turing")].filter(Boolean);
     }
@@ -103,11 +147,20 @@
     scored.sort((x, y) => y.hits - x.hits);
     const matched = scored.filter((s) => s.hits > 0).map((s) => s.a);
     if (matched.length) return matched.slice(0, 3);
-    // default cross-functional pair
     return [AGENTS.find((a) => a.id === "grace"), AGENTS.find((a) => a.id === "linus")];
   }
 
   function subtaskFor(agent, brief) {
+    const kind = window.OfficeDeliverables?.detectKind(brief);
+    if (kind === "presentation" && agent.id === "turing") {
+      return `Собери содержание презентации (5–8 слайдов: title + bullets) по запросу: «${brief}»`;
+    }
+    if (kind === "presentation" && agent.id === "noether") {
+      return `Предложи структуру/заголовки слайдов и визуальную иерархию для: «${brief}»`;
+    }
+    if ((kind === "csv" || kind === "excel") && agent.id === "turing") {
+      return `Собери таблицу метрик по запросу «${brief}»: JSON поле rows = массив строк (первая строка — заголовки колонок).`;
+    }
     if (isDocRequest(brief) && agent.id === "turing") {
       return `Подготовить документ по запросу: «${brief}» — шаблон + проверка структуры`;
     }
@@ -119,6 +172,29 @@
       noether: `Визуал/дизайн: «${brief}»`,
     };
     return map[agent.id] || `Часть работы: «${brief}»`;
+  }
+
+  function collectSlides(results) {
+    const all = [];
+    for (const r of results || []) {
+      const slides = r.slides || r.parsed?.slides;
+      if (Array.isArray(slides)) all.push(...slides);
+    }
+    return all;
+  }
+
+  function collectRows(results) {
+    for (const r of results || []) {
+      const rows = r.rows || r.parsed?.rows;
+      if (Array.isArray(rows) && rows.length >= 2) return rows;
+    }
+    return null;
+  }
+
+  function stripFakeLinks(text) {
+    return String(text || "")
+      .replace(/https?:\/\/\S+/gi, "[файл во вложении ниже — без внешних ссылок]")
+      .replace(/\b[\w.-]+\.(ru|com|io|org)\/\S*/gi, "[см. вложение]");
   }
 
   function dmReply(agent, text) {
@@ -153,6 +229,70 @@
       this.taskSeq = 0;
       this.activeTasks = [];
       this._timers = [];
+      this.lastBrief = "";
+      this.lastSlides = null;
+      this.lastRows = null;
+      this.lastFileKind = null;
+    }
+
+    attachFiles(channel, who, body, brief, content = {}) {
+      const kind =
+        content.file_kind ||
+        this.lastFileKind ||
+        fileKindFor(brief) ||
+        "presentation";
+      const packs = window.OfficeDeliverables
+        ? OfficeDeliverables.buildSummaryPack(
+            brief,
+            content.assigneeNames || "команда",
+            {
+              slides: content.slides || this.lastSlides,
+              rows: content.rows || this.lastRows,
+              file_kind: kind,
+              sections: content.sections,
+            },
+          )
+        : [];
+      const attachments = packs.map((p) => ({
+        name: p.file.filename,
+        url: p.file.url,
+        label: p.label,
+        note: p.note,
+        size: p.file.size,
+      }));
+      if (packs[0]?.slides) this.lastSlides = packs[0].slides;
+      if (packs[0]?.rows) this.lastRows = packs[0].rows;
+      if (packs[0]?.kind) this.lastFileKind = packs[0].kind;
+      const hint = hintForKind(packs[0]?.kind || kind);
+      this.office.emitChat({
+        channel,
+        who,
+        body: stripFakeLinks(body) + (attachments.length ? `\n\nФайлы ниже ↓\n${hint}` : ""),
+        kind: "chat",
+        attachments,
+      });
+      return attachments;
+    }
+
+    /** Re-send / convert last deliverable when user asks for the file again */
+    resendLastDeliverable(channel, note, overrideKind = null) {
+      if (!this.lastBrief || !window.OfficeDeliverables) return false;
+      const kind = overrideKind || this.lastFileKind || fileKindFor(this.lastBrief) || "csv";
+      this.lastFileKind = kind;
+      this.attachFiles(
+        channel,
+        "Ada",
+        note || `Повторно прикладываю файл (${kind}). ${hintForKind(kind)}`,
+        this.lastBrief,
+        {
+          slides: this.lastSlides,
+          rows: this.lastRows,
+          file_kind: kind,
+          assigneeNames: "Ada",
+        },
+      );
+      this.office.setAgentBubble(CEO_ID, "Файл ✓", 2);
+      return true;
     }
 
     static get meta() {
@@ -187,6 +327,31 @@
         kind: "chat",
       });
 
+      // Follow-up like "where is the file?" / "send as excel" → rebuild last deliverable
+      if (isFollowUpFileAsk(brief) && this.lastBrief && !detectFreshBrief(brief)) {
+        const ov = formatOverride(brief);
+        this.office.setAgentWork(CEO_ID, {
+          task: "Отдаю файл владельцу",
+          thought: ov ? `формат → ${ov}` : "повторная выдача…",
+          state: "type",
+          bubble: "Файл…",
+        });
+        this.later(400, () => {
+          const kind = ov || this.lastFileKind || fileKindFor(this.lastBrief) || "csv";
+          this.resendLastDeliverable(
+            "ceo",
+            ov
+              ? `Пересобрала в формате ${kind}. ${hintForKind(kind)}`
+              : `Вот файл по задаче «${this.lastBrief.slice(0, 80)}». ${hintForKind(kind)}`,
+            kind,
+          );
+        });
+        return;
+      }
+
+      this.lastBrief = brief;
+      this.lastFileKind = fileKindFor(brief);
+
       if (window.OfficeLLM?.isReady()) {
         this.runCompanyTaskLLM(brief);
         return;
@@ -198,6 +363,8 @@
     runCompanyTaskSim(brief) {
       const assignees = pickAssignees(brief);
       const taskId = ++this.taskSeq;
+      this.lastBrief = brief;
+      this.lastFileKind = fileKindFor(brief);
       this.activeTasks.push({ id: taskId, brief, assignees: assignees.map((a) => a.id), done: new Set() });
 
       this.office.setAgentWork(CEO_ID, {
@@ -208,8 +375,8 @@
       });
 
       this.later(600, () => {
-        const fileHint = isDocRequest(brief)
-          ? " Это запрос на документ — в конце пришлю файл прямо в этот чат."
+        const fileHint = wantsFile(brief)
+          ? " В конце пришлю готовый файл во вложении (без внешних ссылок)."
           : "";
         this.office.emitChat({
           channel: "ceo",
@@ -312,6 +479,8 @@
     /** Real LLM path: Ada plans → agents work → Ada summarizes + files */
     async runCompanyTaskLLM(brief) {
       const taskId = ++this.taskSeq;
+      this.lastBrief = brief;
+      this.lastFileKind = fileKindFor(brief);
       this.office.setAgentWork(CEO_ID, {
         task: `Думаю над: ${brief}`,
         thought: "LLM · стратегия…",
@@ -326,25 +495,37 @@
       });
 
       try {
+        const forceFile = wantsFile(brief);
+        const forcedKind = fileKindFor(brief);
         const ceoRes = await OfficeLLM.askAgent(
           "ada",
-          `Владелец офиса поставил задачу:\n"""${brief}"""\nСоставь план и назначения.`,
+          `Владелец офиса поставил задачу:\n"""${brief}"""\nСоставь план и назначения.${
+            forceFile
+              ? `\nЭто запрос на ФАЙЛ (тип: ${forcedKind}). need_file=true, file_kind="${forcedKind}". Назначь Turing. Не выдумывай URL.`
+              : ""
+          }`,
         );
         const plan = ceoRes.json || {
-          reply_to_user: ceoRes.text?.slice(0, 500) || "Приняла задачу.",
+          reply_to_user: ceoRes.text?.slice(0, 500) || "Приняла задачу. Файл будет во вложении.",
           office_announce: "",
           assignments: pickAssignees(brief).map((a) => ({ id: a.id, brief: subtaskFor(a, brief) })),
-          need_file: isDocRequest(brief),
-          file_kind: isDocRequest(brief) ? "sale_contract" : null,
+          need_file: forceFile,
+          file_kind: forcedKind,
         };
+        plan.need_file = forceFile || !!plan.need_file;
+        plan.file_kind = plan.file_kind || forcedKind;
+        plan.reply_to_user = stripFakeLinks(plan.reply_to_user || "");
 
-        const assignments = (plan.assignments || [])
+        let assignments = (plan.assignments || [])
           .filter((x) => x && x.id && x.id !== CEO_ID && AGENTS.some((a) => a.id === x.id))
           .slice(0, 3);
-        if (!assignments.length) {
-          assignments.push(
-            ...pickAssignees(brief).map((a) => ({ id: a.id, brief: subtaskFor(a, brief) })),
-          );
+        if (!assignments.length || (forceFile && !assignments.some((a) => a.id === "turing"))) {
+          const fallback = pickAssignees(brief).map((a) => ({ id: a.id, brief: subtaskFor(a, brief) }));
+          const merged = [...assignments];
+          for (const f of fallback) {
+            if (!merged.some((m) => m.id === f.id)) merged.push(f);
+          }
+          assignments = merged.slice(0, 3);
         }
 
         this.activeTasks.push({
@@ -358,14 +539,14 @@
         this.office.emitChat({
           channel: "ceo",
           who: "Ada",
-          body: plan.reply_to_user || "Распределила по команде.",
+          body: plan.reply_to_user || "Распределила по команде. Файл приложу в конце.",
           kind: "chat",
         });
         if (plan.office_announce) {
           this.office.emitChat({
             channel: "office",
             who: "Ada",
-            body: plan.office_announce,
+            body: stripFakeLinks(plan.office_announce),
             kind: "output",
           });
         }
@@ -400,17 +581,37 @@
           });
 
           try {
+            const kindNow = fileKindFor(brief);
+            let extraHint = "";
+            if (agent.id === "turing" || agent.id === "noether") {
+              if (kindNow === "csv" || kindNow === "excel") {
+                extraHint =
+                  `\nВерни JSON: {"reply":"...","bubble":"...","done":true,"need_file":true,"file_kind":"${kindNow}",` +
+                  `"rows":[["Колонка1","Колонка2"],["значение","значение"], ...]} — минимум 10 строк данных. Без URL.`;
+              } else {
+                extraHint =
+                  `\nВерни JSON со slides: [{"title":"...","bullets":["..."]}]. Минимум 5 слайдов. Без URL.`;
+              }
+            }
             const res = await OfficeLLM.askAgent(
               agent.id,
-              `Поручение от CEO Ada:\n"""${job.brief}"""\nКонтекст задачи владельца:\n"""${brief}"""\nСделай свою часть и отчитайся Ada.`,
+              `Поручение от CEO Ada:\n"""${job.brief}"""\nКонтекст задачи владельца:\n"""${brief}"""\nСделай свою часть и отчитайся Ada.${extraHint}`,
             );
             const parsed = res.json || {
               reply: res.text?.slice(0, 800) || "Готово.",
               bubble: "Готово",
               done: true,
             };
-            const reply = parsed.reply || res.text || "Готово.";
-            results.push({ agent, reply, need_file: parsed.need_file, file_kind: parsed.file_kind });
+            const reply = stripFakeLinks(parsed.reply || res.text || "Готово.");
+            results.push({
+              agent,
+              reply,
+              need_file: parsed.need_file,
+              file_kind: parsed.file_kind,
+              slides: parsed.slides,
+              rows: parsed.rows,
+              parsed,
+            });
 
             this.office.emitChat({
               channel: "office",
@@ -442,59 +643,59 @@
           }
         }
 
-        // Final CEO synthesis
-        const digest = results
-          .map((r) => `- ${r.agent.name}: ${r.reply}`)
-          .join("\n");
-        let finalText = `Собрала результаты команды:\n${digest}`;
+        const digest = results.map((r) => `- ${r.agent.name}: ${r.reply}`).join("\n");
+        const outKind = plan.file_kind || forcedKind || fileKindFor(brief) || "presentation";
+        let finalText = `Готово. Файл (${outKind}) во вложении ниже. ${hintForKind(outKind)}`;
         try {
           const fin = await OfficeLLM.askAgent(
             "ada",
-            `Владелец ждал результат по задаче:\n"""${brief}"""\nОтчёты команды:\n${digest}\nСформулируй итоговый ответ владельцу (можно обычным текстом, не JSON). Коротко и полезно.`,
+            `Владелец ждал результат по задаче:\n"""${brief}"""\nОтчёты команды:\n${digest}\n` +
+              `Тип файла: ${outKind}. Итоговый ответ ОБЫЧНЫМ текстом (не JSON). ` +
+              `Запрещено: URL, личные кабинеты, упоминать неверный формат (не говори про .html если тип ${outKind}). ` +
+              `Скажи что нужный файл во вложении. Коротко.`,
           );
-          // prefer plain text for final
-          finalText = fin.json?.reply_to_user || fin.text || finalText;
+          finalText = stripFakeLinks(fin.json?.reply_to_user || fin.text || finalText);
         } catch {
-          /* keep digest */
+          /* keep default */
         }
+
+        const slides = collectSlides(results);
+        const rows = collectRows(results);
+        this.lastSlides = slides.length ? slides : null;
+        this.lastRows = rows;
+        this.lastFileKind = outKind;
 
         const needFile =
-          plan.need_file ||
-          isDocRequest(brief) ||
-          results.some((r) => r.need_file);
-        let attachments = [];
+          forceFile ||
+          !!plan.need_file ||
+          results.some((r) => r.need_file) ||
+          wantsFile(brief);
         if (needFile && window.OfficeDeliverables) {
-          const packs = OfficeDeliverables.buildSummaryPack(
-            brief,
-            results.map((r) => r.agent.name).join(", "),
-          );
-          attachments = packs.map((p) => ({
-            name: p.file.filename,
-            url: p.file.url,
-            label: p.label,
-            note: p.note,
-            size: p.file.size,
-          }));
+          this.attachFiles("ceo", "Ada", finalText, brief, {
+            slides: this.lastSlides,
+            rows: this.lastRows,
+            file_kind: this.lastFileKind,
+            assigneeNames: results.map((r) => r.agent.name).join(", "),
+          });
+        } else {
+          this.office.emitChat({
+            channel: "ceo",
+            who: "Ada",
+            body: finalText,
+            kind: "chat",
+          });
         }
-
-        this.office.emitChat({
-          channel: "ceo",
-          who: "Ada",
-          body: finalText + (attachments.length ? "\n\nФайлы ниже ↓" : ""),
-          kind: "chat",
-          attachments,
-        });
         this.office.setAgentWork(CEO_ID, {
           task: `Закрыла #${taskId}`,
           thought: "жду следующий бриф",
           state: "idle",
-          bubble: attachments.length ? "Файл ✓" : "Готово ✓",
+          bubble: "Файл ✓",
         });
       } catch (err) {
         this.office.emitChat({
           channel: "ceo",
           who: "Ada",
-          body: `Не смогла достучаться до LLM: ${err.message}. Проверь Settings (ключ/модель). Пока откатываюсь на симуляцию.`,
+          body: `Не смогла достучаться до LLM: ${err.message}. Проверь Settings. Пока откатываюсь на симуляцию.`,
           kind: "chat",
         });
         this.runCompanyTaskSim(brief);
@@ -513,33 +714,16 @@
         kind: "output",
       });
 
-      const packs =
-        window.OfficeDeliverables
-          ? OfficeDeliverables.buildSummaryPack(task.brief, names)
-          : [];
-      const attachments = packs.map((p) => ({
-        name: p.file.filename,
-        url: p.file.url,
-        label: p.label,
-        note: p.note,
-        size: p.file.size,
-      }));
+      this.lastBrief = task.brief;
+      this.lastFileKind = fileKindFor(task.brief);
+      const attachments = this.attachFiles(
+        "ceo",
+        "Ada",
+        `Итог по задаче #${task.id}: команда (${names}) закрыла свои части. Скачай файл во вложении (без внешних ссылок).`,
+        task.brief,
+        { assigneeNames: names, file_kind: this.lastFileKind, slides: this.lastSlides },
+      );
 
-      const docNote = isDocRequest(task.brief)
-        ? " Ниже — готовый файл (можно скачать)."
-        : attachments.length
-          ? " Приложила файлы результата."
-          : "";
-
-      this.office.emitChat({
-        channel: "ceo",
-        who: "Ada",
-        body: `Итог по задаче #${task.id}: команда (${names}) закрыла свои части.${docNote} Если нужно — уточни в личке.`,
-        kind: "chat",
-        attachments,
-      });
-
-      // Also drop primary file into office log
       if (attachments[0]) {
         this.office.emitChat({
           channel: "office",
@@ -599,25 +783,23 @@
       }
 
       this.later(700 + Math.random() * 500, () => {
-        const wantsFile = isDocRequest(text) || /файл|скинь|пришли|документ|word|договор/.test(text.toLowerCase());
+        const askFile = wantsFile(text);
         const reply = dmReply(agent, text);
 
-        // CEO can attach file directly in DM
-        if (agent.id === CEO_ID && wantsFile && window.OfficeDeliverables) {
-          const packs = OfficeDeliverables.buildSummaryPack(text, "Ada");
-          const attachments = packs.map((p) => ({
-            name: p.file.filename,
-            url: p.file.url,
-            label: p.label,
-            note: p.note,
-            size: p.file.size,
-          }));
-          this.office.emitChat({
-            channel,
-            who: "Ada",
-            body: `${reply} Вот файлы:`,
-            kind: "chat",
-            attachments,
+        if (agent.id === CEO_ID && isFollowUpFileAsk(text) && this.lastBrief && !detectFreshBrief(text)) {
+          this.resendLastDeliverable(channel, null, formatOverride(text) || this.lastFileKind);
+          return;
+        }
+
+        if (agent.id === CEO_ID && askFile && window.OfficeDeliverables) {
+          const brief = detectFreshBrief(text) || !this.lastBrief ? text : this.lastBrief;
+          this.lastBrief = brief;
+          const kind = formatOverride(text) || fileKindFor(brief) || this.lastFileKind || "csv";
+          this.attachFiles(channel, "Ada", `${reply} Вот файлы:`, brief, {
+            assigneeNames: "Ada",
+            file_kind: kind,
+            slides: this.lastSlides,
+            rows: this.lastRows,
           });
           this.office.setAgentBubble(agentId, "Файл ✓", 2);
           return;
@@ -626,64 +808,77 @@
         this.office.emitChat({
           channel,
           who: agent.name,
-          body: reply,
+          body: stripFakeLinks(reply),
           kind: "chat",
         });
         this.office.setAgentBubble(agentId, "Ответил", 1.5);
 
-        // Non-CEO + file ask → escalate to company task so CEO ships file
-        if (agent.id !== CEO_ID && wantsFile) {
+        if (agent.id !== CEO_ID && askFile) {
           this.later(900, () => this.submitCompanyTask(text));
           return;
         }
 
-        // If user asked CEO to do work inside DM (non-file), auto-route as company task
-        if (agent.id === CEO_ID && /задач|сделай|нужно|надо|brief/.test(text.toLowerCase()) && !wantsFile) {
+        if (agent.id === CEO_ID && /задач|сделай|нужно|надо|brief|презентац/.test(text.toLowerCase()) && !askFile) {
           this.later(900, () => this.submitCompanyTask(text));
         }
       });
     }
 
     async sendDMLLM(agent, channel, text) {
-      const wantsFile = isDocRequest(text) || /файл|скинь|пришли|документ|word|договор/.test(text.toLowerCase());
+      const askFile = wantsFile(text);
       try {
-        const prompt =
-          agent.id === CEO_ID
-            ? `Владелец пишет тебе в личку (ты CEO):\n"""${text}"""\nОтветь полезно. Если нужна делегация команде — скажи, что берёшь в работу. Можно обычным текстом.`
-            : `Владелец пишет тебе в личку. Ты ${agent.title}, зона «${agent.areaLabel}», отчитываешься Ada.\nСообщение:\n"""${text}"""\nОтветь по роли. JSON: {"reply":"...","bubble":"..."}`;
-
-        const res = await OfficeLLM.askAgent(agent.id, prompt);
-        const reply =
-          res.json?.reply_to_user ||
-          res.json?.reply ||
-          res.text ||
-          "Не удалось сформировать ответ.";
-
-        let attachments = [];
-        if (agent.id === CEO_ID && wantsFile && window.OfficeDeliverables) {
-          const packs = OfficeDeliverables.buildSummaryPack(text, "Ada");
-          attachments = packs.map((p) => ({
-            name: p.file.filename,
-            url: p.file.url,
-            label: p.label,
-            note: p.note,
-            size: p.file.size,
-          }));
+        if (agent.id === CEO_ID && isFollowUpFileAsk(text) && this.lastBrief && !detectFreshBrief(text)) {
+          this.resendLastDeliverable(channel, null, formatOverride(text) || this.lastFileKind);
+          return;
         }
 
-        this.office.emitChat({
-          channel,
-          who: agent.name,
-          body: reply + (attachments.length ? "\n\nФайлы ниже ↓" : ""),
-          kind: "chat",
-          attachments,
-        });
-        this.office.setAgentBubble(agent.id, attachments.length ? "Файл ✓" : (res.json?.bubble || "Ок").slice(0, 24), 2);
+        // New substantive CEO task in DM → full company pipeline (with real file)
+        if (
+          agent.id === CEO_ID &&
+          (detectFreshBrief(text) || /сделай|подготов|создай|презентац|рынк|договор|метрик|таблиц/i.test(text))
+        ) {
+          this.office.emitChat({
+            channel,
+            who: "Ada",
+            body: "Беру как задачу компании — делегирую команде и пришлю файл во вложении (без внешних ссылок).",
+            kind: "chat",
+          });
+          this.later(400, () => this.submitCompanyTask(text));
+          return;
+        }
 
-        // Escalate company work through CEO hierarchy when appropriate
-        if (agent.id === CEO_ID && /сделай|задач|нужно|надо|brief|команд/i.test(text) && !wantsFile) {
-          this.later(600, () => this.submitCompanyTask(text));
-        } else if (agent.id !== CEO_ID && wantsFile) {
+        const prompt =
+          agent.id === CEO_ID
+            ? `Владелец пишет тебе в личку (ты CEO):\n"""${text}"""\nОтветь полезно обычным текстом. Запрещены любые URL и «личные кабинеты». Если нужен файл — скажи что он будет во вложении.`
+            : `Владелец пишет тебе в личку. Ты ${agent.title}, зона «${agent.areaLabel}», отчитываешься Ada.\nСообщение:\n"""${text}"""\nОтветь по роли. Без URL. JSON: {"reply":"...","bubble":"..."}`;
+
+        const res = await OfficeLLM.askAgent(agent.id, prompt);
+        const reply = stripFakeLinks(
+          res.json?.reply_to_user || res.json?.reply || res.text || "Не удалось сформировать ответ.",
+        );
+
+        if (agent.id === CEO_ID && askFile && window.OfficeDeliverables) {
+          const brief = this.lastBrief && isFollowUpFileAsk(text) ? this.lastBrief : text;
+          this.lastBrief = brief;
+          const kind = formatOverride(text) || fileKindFor(brief) || this.lastFileKind || "csv";
+          this.attachFiles(channel, "Ada", reply, brief, {
+            assigneeNames: "Ada",
+            file_kind: kind,
+            slides: this.lastSlides,
+            rows: this.lastRows,
+          });
+          this.office.setAgentBubble(agent.id, "Файл ✓", 2);
+        } else {
+          this.office.emitChat({
+            channel,
+            who: agent.name,
+            body: reply,
+            kind: "chat",
+          });
+          this.office.setAgentBubble(agent.id, (res.json?.bubble || "Ок").slice(0, 24), 2);
+        }
+
+        if (agent.id !== CEO_ID && askFile) {
           this.later(600, () => this.submitCompanyTask(text));
         }
       } catch (err) {
