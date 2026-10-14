@@ -462,32 +462,34 @@
     <div class="modal">
       <h2>AI Settings</h2>
       <p class="hint" style="margin-top:0">
-        Каждый агент = отдельная роль (system prompt).
-        <strong>Ollama</strong> — бесплатно на твоём Mac, без кредитов.
-        Облачные ключи хранятся только в браузере (localStorage).
+        Каждый агент = отдельная роль.
+        Рекомендуем <strong>Google Gemini</strong> — бесплатный облачный ключ, ноутбук не нагружает.
+        Ключи только в браузере (localStorage).
       </p>
       <label><input type="checkbox" id="cfgEnabled" /> Включить живой LLM</label>
       <label>Провайдер</label>
       <select id="cfgProvider">
-        <option value="ollama">Ollama (локально, бесплатно)</option>
+        <option value="gemini">Google Gemini (облако, бесплатно)</option>
+        <option value="groq">Groq (облако, бесплатно)</option>
+        <option value="ollama">Ollama (локально)</option>
         <option value="openrouter">OpenRouter</option>
         <option value="openai">OpenAI</option>
         <option value="anthropic">Anthropic</option>
       </select>
       <label id="cfgKeyLabel">API key</label>
-      <input id="cfgKey" type="password" placeholder="для Ollama не нужен" autocomplete="off" />
+      <input id="cfgKey" type="password" placeholder="ключ Gemini / Groq / …" autocomplete="off" />
       <label>Модель</label>
-      <input id="cfgModel" type="text" placeholder="llama3.2" />
+      <input id="cfgModel" type="text" placeholder="gemini-2.5-flash-lite" />
       <label>Base URL (опционально)</label>
-      <input id="cfgBase" type="text" placeholder="Ollama: пусто = http://127.0.0.1:11434/v1" />
+      <input id="cfgBase" type="text" placeholder="обычно пусто" />
       <div class="hint" id="cfgHint">
-        <strong>Ollama:</strong> установи с <a href="https://ollama.com/download" target="_blank" rel="noopener">ollama.com</a>,
-        затем <code>ollama pull llama3.2</code>. Для браузера запусти с CORS:<br>
-        <code>OLLAMA_ORIGINS="http://127.0.0.1:8765,http://localhost:8765" ollama serve</code><br>
-        Модель: <code>llama3.2</code> / <code>qwen2.5</code> / <code>mistral</code>
+        <strong>Gemini free:</strong> лучше <code>gemini-2.5-flash-lite</code>
+        (<a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">ключ</a>).
+        При «high demand» — подожди минуту или переключись на <strong>Groq</strong>.
       </div>
       <div class="row">
         <button type="button" id="cfgSave">Сохранить</button>
+        <button type="button" class="ghost" id="cfgPickModel">Подобрать модель</button>
         <button type="button" class="ghost" id="cfgTest">Тест Ada</button>
         <button type="button" class="ghost" id="cfgClose">Закрыть</button>
       </div>
@@ -495,10 +497,10 @@
     </div>
   </div>
 
-  <script src="roles.js?v=3"></script>
-  <script src="llm.js?v=2"></script>
-  <script src="deliverables.js?v=3"></script>
-  <script src="hq.js?v=5"></script>
+  <script src="roles.js?v=4"></script>
+  <script src="llm.js?v=7"></script>
+  <script src="deliverables.js?v=4"></script>
+  <script src="hq.js?v=6"></script>
   <script src="office.js?v=5"></script>
   <script>
     const chatEl = document.getElementById("chat");
@@ -696,25 +698,34 @@
       keyInput.disabled = !needsKey;
       keyInput.placeholder = needsKey ? "sk-… или ключ OpenRouter" : "для Ollama не нужен";
       keyLabel.textContent = needsKey ? "API key" : "API key (не нужен для Ollama)";
-      if (p === "ollama") {
+      const models = OfficeLLM.PROVIDER_MODELS || {};
+      if (p === "gemini") {
+        hint.innerHTML =
+          '<strong>Gemini:</strong> бесплатный ключ → <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">aistudio.google.com/apikey</a>. ' +
+          'Free-tier: <code>gemini-2.5-flash-lite</code>. High demand → подожди или переключись на Groq.';
+      } else if (p === "groq") {
+        hint.innerHTML =
+          '<strong>Groq:</strong> ключ → <a href="https://console.groq.com/keys" target="_blank" rel="noopener">console.groq.com/keys</a>. ' +
+          'Модель: <code>llama-3.3-70b-versatile</code>. Быстро, есть бесплатный лимит.';
+      } else if (p === "ollama") {
         hint.innerHTML =
           '<strong>Ollama:</strong> <a href="https://ollama.com/download" target="_blank" rel="noopener">ollama.com</a> → ' +
-          '<code>ollama pull llama3.2</code>. CORS: ' +
+          '<code>ollama pull qwen2.5:7b</code>. CORS: ' +
           '<code>OLLAMA_ORIGINS="http://127.0.0.1:8765,http://localhost:8765" ollama serve</code>';
       } else {
         hint.innerHTML =
-          'OpenRouter: <a href="https://openrouter.ai/keys" target="_blank" rel="noopener">keys</a> · ' +
-          'OpenAI: <a href="https://platform.openai.com/api-keys" target="_blank" rel="noopener">keys</a> · ' +
-          'Anthropic: <a href="https://console.anthropic.com/" target="_blank" rel="noopener">console</a>';
+          'OpenRouter / OpenAI / Anthropic — платные ключи. Модель по умолчанию: <code>' +
+          (models[p] || "") +
+          "</code>";
       }
     }
 
     function openSettings() {
       const cfg = OfficeLLM.loadConfig();
       document.getElementById("cfgEnabled").checked = !!cfg.enabled;
-      document.getElementById("cfgProvider").value = cfg.provider || "ollama";
+      document.getElementById("cfgProvider").value = cfg.provider || "gemini";
       document.getElementById("cfgKey").value = cfg.apiKey || "";
-      document.getElementById("cfgModel").value = cfg.model || "llama3.2";
+      document.getElementById("cfgModel").value = cfg.model || "gemini-2.5-flash-lite";
       document.getElementById("cfgBase").value = cfg.baseUrl || "";
       document.getElementById("cfgStatus").textContent = "";
       syncProviderUi();
@@ -731,10 +742,8 @@
     document.getElementById("cfgProvider").addEventListener("change", () => {
       const p = document.getElementById("cfgProvider").value;
       const model = document.getElementById("cfgModel");
-      if (p === "ollama") model.value = "llama3.2";
-      if (p === "openrouter") model.value = "openai/gpt-4o-mini";
-      if (p === "openai") model.value = "gpt-4o-mini";
-      if (p === "anthropic") model.value = "claude-sonnet-4-5";
+      const defaults = OfficeLLM.PROVIDER_MODELS || {};
+      if (defaults[p]) model.value = defaults[p];
       syncProviderUi();
     });
     document.getElementById("cfgSave").addEventListener("click", () => {
@@ -753,6 +762,36 @@
           ? "Сохранено. Включи галочку «Живой LLM» и укажи модель (например llama3.2)."
           : "Сохранено. Чтобы включить ИИ — поставь галочку и API key.";
     });
+    document.getElementById("cfgPickModel").addEventListener("click", async () => {
+      const status = document.getElementById("cfgStatus");
+      document.getElementById("cfgSave").click();
+      const cfg = OfficeLLM.loadConfig();
+      if (cfg.provider !== "gemini") {
+        status.textContent = "Подбор модели сейчас только для Gemini.";
+        return;
+      }
+      if (!cfg.apiKey) {
+        status.textContent = "Сначала вставь Gemini API key и сохрани.";
+        return;
+      }
+      status.textContent = "Спрашиваю Google список моделей…";
+      try {
+        const models = await OfficeLLM.listGeminiModels({
+          apiKey: document.getElementById("cfgKey").value.trim(),
+          baseUrl: document.getElementById("cfgBase").value.trim(),
+        });
+        const best = OfficeLLM.pickBestGeminiModel(models);
+        document.getElementById("cfgModel").value = best;
+        OfficeLLM.saveConfig({ model: best, enabled: true, provider: "gemini", apiKey: cfg.apiKey });
+        refreshAiStatus();
+        status.textContent =
+          "Выбрана модель: " + best + ". Доступно flash: " +
+          models.filter((m) => /flash/i.test(m)).slice(0, 6).join(", ");
+      } catch (err) {
+        status.textContent = "Ошибка подбора: " + err.message;
+      }
+    });
+
     document.getElementById("cfgTest").addEventListener("click", async () => {
       const status = document.getElementById("cfgStatus");
       document.getElementById("cfgSave").click();
@@ -763,8 +802,10 @@
       status.textContent = "Тестирую Ada…";
       try {
         const res = await OfficeLLM.askAgent("ada", 'Скажи одним коротким предложением JSON: {"reply_to_user":"...", "office_announce":"", "assignments":[], "need_file":false, "file_kind":null}');
+        const used = res.model ? ` [${res.model}]` : "";
         const text = res.json?.reply_to_user || res.text?.slice(0, 120) || "ok";
-        status.textContent = "OK: " + text;
+        status.textContent = "OK" + used + ": " + text;
+        if (res.model) document.getElementById("cfgModel").value = res.model;
       } catch (err) {
         status.textContent = "Ошибка: " + err.message;
       }

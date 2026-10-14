@@ -23,27 +23,22 @@ python3 -m http.server 8765
 
 ## Живой ИИ (роли агентов)
 
-### Вариант A — Ollama (бесплатно, локально)
+### Вариант A — Google Gemini (рекомендуем, бесплатно, без нагрузки на Mac)
 
-1. Установи [Ollama](https://ollama.com/download).
-2. Скачай модель:
-   ```bash
-   ollama pull llama3.2
-   ```
-3. Запусти с CORS для браузера (порт офиса `8765`):
-   ```bash
-   OLLAMA_ORIGINS="http://127.0.0.1:8765,http://localhost:8765" ollama serve
-   ```
-   Если Ollama уже как приложение macOS — закрой его и запусти команду выше в терминале.
-4. В Pixel Office: **AI Settings** → провайдер **Ollama** → модель `llama3.2` → включи LLM → **Сохранить** → **Тест Ada**.
+1. Ключ: [aistudio.google.com/apikey](https://aistudio.google.com/apikey)
+2. В Pixel Office: **AI Settings** → **Google Gemini** → ключ → модель `gemini-2.5-flash-lite` (free-friendly) → **Тест Ada**.
+3. Если «high demand» — подожди минуту или переключись на **Groq**: [console.groq.com/keys](https://console.groq.com/keys), модель `llama-3.3-70b-versatile`.
 
-Ключ не нужен. Всё крутится на твоём Mac.
+### Вариант B — Ollama (локально)
 
-### Вариант B — облако (платно)
+Тянет RAM/CPU ноутбука. Модель: `qwen2.5:7b` и т.п. Нужен CORS для браузера.
 
-OpenRouter / OpenAI / Anthropic: ключ в **AI Settings**.
+### Вариант C — платное облако
+
+OpenRouter / OpenAI / Anthropic.
 
 Каждый агент работает под своим system prompt (CEO / Frontend / Backend / QA / Research / Design).
+Запросы «за и против» / бизнес-идеи уходят в полноценный аналитический отчёт (.html → PDF).
 
 ## Ассеты
 

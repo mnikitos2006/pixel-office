@@ -158,6 +158,16 @@
     if (kind === "presentation" && agent.id === "noether") {
       return `Предложи структуру/заголовки слайдов и визуальную иерархию для: «${brief}»`;
     }
+    if (kind === "report" && agent.id === "turing") {
+      return (
+        `Сделай ГЛУБОКИЙ бизнес-разбор по запросу «${brief}». ` +
+        `Верни JSON sections: минимум 7 разделов (суть, вердикт, плюсы, минусы/риски, локация, экономика, next steps, рекомендация). ` +
+        `В каждом body — конкретные абзацы/пункты, не общие фразы. Указывай допущения, если нет точных цифр.`
+      );
+    }
+    if (kind === "report" && agent.id === "noether") {
+      return `Добавь структуру восприятия идеи для владельца (как подать плюсы/минусы) по: «${brief}»`;
+    }
     if ((kind === "csv" || kind === "excel") && agent.id === "turing") {
       return `Собери таблицу метрик по запросу «${brief}»: JSON поле rows = массив строк (первая строка — заголовки колонок).`;
     }
@@ -189,6 +199,15 @@
       if (Array.isArray(rows) && rows.length >= 2) return rows;
     }
     return null;
+  }
+
+  function collectSections(results) {
+    const all = [];
+    for (const r of results || []) {
+      const sections = r.sections || r.parsed?.sections;
+      if (Array.isArray(sections)) all.push(...sections);
+    }
+    return all.length ? all : null;
   }
 
   function stripFakeLinks(text) {
@@ -232,6 +251,7 @@
       this.lastBrief = "";
       this.lastSlides = null;
       this.lastRows = null;
+      this.lastSections = null;
       this.lastFileKind = null;
     }
 
@@ -248,8 +268,8 @@
             {
               slides: content.slides || this.lastSlides,
               rows: content.rows || this.lastRows,
+              sections: content.sections || this.lastSections,
               file_kind: kind,
-              sections: content.sections,
             },
           )
         : [];
@@ -262,7 +282,8 @@
       }));
       if (packs[0]?.slides) this.lastSlides = packs[0].slides;
       if (packs[0]?.rows) this.lastRows = packs[0].rows;
-      if (packs[0]?.kind) this.lastFileKind = packs[0].kind;
+      if (packs[0]?.sections) this.lastSections = packs[0].sections;
+      if (packs[0]?.kind) this.lastFileKind = packs[0].kind === "report_md" ? "report" : packs[0].kind;
       const hint = hintForKind(packs[0]?.kind || kind);
       this.office.emitChat({
         channel,
@@ -287,6 +308,7 @@
         {
           slides: this.lastSlides,
           rows: this.lastRows,
+          sections: this.lastSections,
           file_kind: kind,
           assigneeNames: "Ada",
         },
@@ -588,6 +610,11 @@
                 extraHint =
                   `\nВерни JSON: {"reply":"...","bubble":"...","done":true,"need_file":true,"file_kind":"${kindNow}",` +
                   `"rows":[["Колонка1","Колонка2"],["значение","значение"], ...]} — минимум 10 строк данных. Без URL.`;
+              } else if (kindNow === "report") {
+                extraHint =
+                  `\nВерни JSON: {"reply":"...","bubble":"Разбор ✓","done":true,"need_file":true,"file_kind":"report",` +
+                  `"sections":[{"heading":"...","body":"развёрнутый текст с пунктами"}]}. ` +
+                  `Минимум 7 разделов, body каждого — не короче 400 символов где уместно. Без URL. Пиши по-русски.`;
               } else {
                 extraHint =
                   `\nВерни JSON со slides: [{"title":"...","bullets":["..."]}]. Минимум 5 слайдов. Без URL.`;
@@ -610,6 +637,7 @@
               file_kind: parsed.file_kind,
               slides: parsed.slides,
               rows: parsed.rows,
+              sections: parsed.sections,
               parsed,
             });
 
@@ -661,19 +689,23 @@
 
         const slides = collectSlides(results);
         const rows = collectRows(results);
+        const sections = collectSections(results);
         this.lastSlides = slides.length ? slides : null;
         this.lastRows = rows;
+        this.lastSections = sections;
         this.lastFileKind = outKind;
 
         const needFile =
           forceFile ||
           !!plan.need_file ||
           results.some((r) => r.need_file) ||
-          wantsFile(brief);
+          wantsFile(brief) ||
+          outKind === "report";
         if (needFile && window.OfficeDeliverables) {
           this.attachFiles("ceo", "Ada", finalText, brief, {
             slides: this.lastSlides,
             rows: this.lastRows,
+            sections: this.lastSections,
             file_kind: this.lastFileKind,
             assigneeNames: results.map((r) => r.agent.name).join(", "),
           });

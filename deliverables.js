@@ -93,7 +93,13 @@
       return "sale_contract";
     }
     if (/word|\.docx?/.test(t) && /договор|документ|файл/.test(t)) return "sale_contract";
-    if (/отч[её]т|report|\.md|markdown/.test(t)) return "report";
+    if (
+      /отч[её]т|report|\.md|markdown|за и против|плюс[ыа].*минус|минус[ыа].*плюс|проанализир|разбери|бизнес.?иде|feasibility|стоит ли|идея[:：]|открыть .{0,40}(сад|гостиниц|отел)/.test(
+        t,
+      )
+    ) {
+      return "report";
+    }
     return null;
   }
 
@@ -108,7 +114,9 @@
     if (kind === "excel") return "Скачай .xls и открой в Excel / Google Sheets / Numbers.";
     if (kind === "csv") return "Скачай .csv (UTF-8) — открывается в Excel.";
     if (kind === "sale_contract") return "Скачай .doc — открывается в Word / Google Docs.";
-    if (kind === "report") return "Скачай .md отчёт.";
+    if (kind === "report" || kind === "analysis" || kind === "report_md") {
+      return "Скачай аналитику .html → открой → «Печать / PDF». Рядом есть .md копия.";
+    }
     return "Скачай вложение ниже.";
   }
 
@@ -341,26 +349,147 @@ ${sheetRows}
     };
   }
 
+  function defaultAnalysisSections(brief) {
+    return [
+      { heading: "Суть идеи", body: String(brief) },
+      {
+        heading: "Краткий вердикт",
+        body:
+          "Идея сочетает два спроса (дневной присмотр и передержка), но успех зависит от локации, разрешений, шума/запахов для соседей и unit-экономики. Ниже — каркас анализа; с облачной моделью (Gemini) отчёт должен быть заполнен конкретнее.",
+      },
+      {
+        heading: "Плюсы (за)",
+        body: [
+          "1) Растущий рынок pet-care в крупных городах РФ, готовность платить за доверие и удобство.",
+          "2) Фестивальный мкр. — жилая плотность + семьи с питомцами → локальный спрос без дальней логистики.",
+          "3) Два продукта в одном (сад днём + гостиница) повышают загрузку площадей.",
+          "4) Повторные покупки и подписка (абонементы) дают предсказуемую выручку.",
+          "5) Можно наращивать LTV: груминг, вет-партнёрства, зоотовары, трансферы.",
+        ].join("\n"),
+      },
+      {
+        heading: "Минусы и риски (против)",
+        body: [
+          "1) Жёсткие требования: зонирование, СЭС/ветконтроль, пожарка, выгул, утилизация отходов, шум.",
+          "2) Конфликт с соседями (лай, запах) — риск жалоб и закрытия.",
+          "3) Высокий капекс/опекс: аренда/ремонт «под животных», персонал 7/15–24/7, страхование рисков.",
+          "4) Сезонность отпусков vs будни сада; простой мест без маркетинга доверия.",
+          "5) Ответственность за травмы/побег/болезнь — репутационные и юридические риски.",
+          "6) Конкуренция с частными догситтерами и уже работающими гостиницами Краснодара.",
+        ].join("\n"),
+      },
+      {
+        heading: "Локация: Фестивальный, Краснодар",
+        body: [
+          "Проверить: близость к паркам/выгулу, подъезд для клиентов, парковка, отношение УК/соседей.",
+          "Оценить платёжеспособный спрос (новостройки vs более зрелый жилфонд), трафик авто.",
+          "Сравнить 3–5 конкурентов в радиусе 3–7 км: цены/сутки, загрузка, отзывы, свободные ниши (мелкие породы, кошки, дневной сад).",
+        ].join("\n"),
+      },
+      {
+        heading: "Unit-экономика (черновой каркас)",
+        body: [
+          "Доходы: место×день (сад) + место×сутки (гостиница) + доп.услуги.",
+          "Расходы: аренда, коммуналка, корм/расходники, ФОТ, маркетинг, ветрезерв, амортизация ремонта.",
+          "Цели на старте: точка безубыточности по занятости мест; сценарии 40% / 60% / 80% загрузки.",
+          "Нужны реальные цифры аренды и ФОТ по Краснодару — иначе это только гипотеза.",
+        ].join("\n"),
+      },
+      {
+        heading: "Что проверить до запуска",
+        body: [
+          "1) Юрформат и разрешения на деятельность с животными в выбранном помещении.",
+          "2) Интервью 20–30 владельцев питомцев в районе (Willingness to pay).",
+          "3) Смета ремонта «животно-устойчивого» помещения.",
+          "4) Партнёр-ветклиника и протокол карантина/вакцинации.",
+          "5) Пилот: только дневной сад на 8–12 мест → затем гостиница.",
+        ].join("\n"),
+      },
+      {
+        heading: "Рекомендация",
+        body:
+          "Идея жизнеспособна как нишевый сервис при сильном контроле рисков соседей/санитарии и при подтверждённом локальном спросе. Не масштабировать сразу: валидировать спрос и разрешения, считать экономику на консервативной загрузке 40–50%.",
+      },
+    ];
+  }
+
+  function normalizeSections(sectionsInput, brief) {
+    if (!Array.isArray(sectionsInput) || !sectionsInput.length) {
+      return defaultAnalysisSections(brief);
+    }
+    return sectionsInput.slice(0, 16).map((s, i) => ({
+      heading: String(s.heading || s.title || `Раздел ${i + 1}`).slice(0, 120),
+      body: String(s.body || s.text || s.content || "").trim() || "—",
+    }));
+  }
+
+  function buildReportHtml(brief, sectionsInput) {
+    const sections = normalizeSections(sectionsInput, brief);
+    const title = "Аналитический отчёт — Pixel Office";
+    const blocks = sections
+      .map(
+        (s) => `
+<section class="block">
+  <h2>${escapeHtml(s.heading)}</h2>
+  <div class="body">${escapeHtml(s.body).replace(/\n/g, "<br>")}</div>
+</section>`,
+      )
+      .join("\n");
+    const html = `<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8" />
+<title>${escapeHtml(title)}</title>
+<style>
+  body { font-family: "Segoe UI", system-ui, sans-serif; max-width: 820px; margin: 0 auto; padding: 28px 20px 64px; color: #15202b; line-height: 1.5; }
+  header { border-bottom: 2px solid #1d4ed8; padding-bottom: 12px; margin-bottom: 24px; }
+  h1 { margin: 0 0 6px; font-size: 26px; }
+  .meta { color: #64748b; font-size: 13px; }
+  h2 { font-size: 18px; margin: 0 0 10px; color: #1e3a8a; }
+  .block { margin: 0 0 22px; padding: 14px 16px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 10px; }
+  .body { font-size: 14.5px; white-space: normal; }
+  button { margin-top: 8px; background: #1d4ed8; color: #fff; border: 0; border-radius: 8px; padding: 8px 12px; cursor: pointer; }
+  @media print { button { display: none; } .block { break-inside: avoid; } }
+</style>
+</head>
+<body>
+<header>
+  <h1>${escapeHtml(title)}</h1>
+  <div class="meta">Бриф: ${escapeHtml(String(brief).slice(0, 500))}<br>
+  Сформировано: ${escapeHtml(new Date().toLocaleString("ru-RU"))}</div>
+  <button onclick="window.print()">Печать / PDF</button>
+</header>
+${blocks}
+</body>
+</html>`;
+    return {
+      kind: "report",
+      label: "Аналитика (.html → PDF)",
+      file: textFile(html, sanitizeFilename("business_analysis") + ".html", "text/html;charset=utf-8"),
+      note: "Полный разбор. Открой и при необходимости «Печать → PDF».",
+      sections,
+    };
+  }
+
   function buildReport(brief, sectionsInput) {
-    const sections = Array.isArray(sectionsInput) && sectionsInput.length
-      ? sectionsInput
-      : [
-          { heading: "Запрос", body: brief },
-          { heading: "Краткий вывод", body: "Черновик отчёта подготовлен командой Pixel Office. Уточните регион и сегмент для углубления." },
-          { heading: "Рекомендации", body: "1) Зафиксировать ЦА\n2) Собрать comps\n3) Проверить юридические риски" },
-        ];
+    const sections = normalizeSections(sectionsInput, brief);
     const md = [
-      `# Отчёт Pixel Office`,
+      `# Аналитический отчёт Pixel Office`,
       ``,
       `_Сгенерировано: ${new Date().toLocaleString("ru-RU")}_`,
       ``,
-      ...sections.flatMap((s) => [`## ${s.heading || s.title || "Раздел"}`, ``, String(s.body || s.text || ""), ``]),
+      `## Запрос`,
+      ``,
+      brief,
+      ``,
+      ...sections.flatMap((s) => [`## ${s.heading}`, ``, s.body, ``]),
     ].join("\n");
     return {
-      kind: "report",
+      kind: "report_md",
       label: "Отчёт (.md)",
-      file: textFile(md, sanitizeFilename("pixel_office_report") + ".md", "text/markdown;charset=utf-8"),
-      note: "Текстовый отчёт по задаче.",
+      file: textFile(md, sanitizeFilename("business_analysis") + ".md", "text/markdown;charset=utf-8"),
+      note: "Markdown-копия аналитики.",
+      sections,
     };
   }
 
@@ -450,8 +579,8 @@ ${sheetRows}
     if (kind === "sale_contract") return buildSaleContract(brief);
     if (kind === "excel") return buildExcel(brief, content.rows);
     if (kind === "csv") return buildCsv(brief, content.rows);
-    if (kind === "report" || kind === "md" || kind === "brief_pack") {
-      return buildReport(brief, content.sections);
+    if (kind === "report" || kind === "md" || kind === "brief_pack" || kind === "analysis") {
+      return buildReportHtml(brief, content.sections);
     }
     return buildPresentation(brief, content.slides);
   }
@@ -476,6 +605,10 @@ ${sheetRows}
         { heading: "Команда", body: assigneeNames || "—" },
       ]);
       files.push(notes);
+    }
+
+    if (primary.kind === "report" || content.file_kind === "report" || content.file_kind === "analysis") {
+      files.push(buildReport(brief, primary.sections || content.sections));
     }
 
     // For tables also give CSV alongside Excel for convenience
@@ -509,9 +642,11 @@ ${sheetRows}
     buildSaleContract,
     buildPresentation,
     buildReport,
+    buildReportHtml,
     buildCsv,
     buildExcel,
     defaultPresentationSlides,
     defaultMetricsRows,
+    defaultAnalysisSections,
   };
 })();
